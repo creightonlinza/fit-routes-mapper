@@ -1,0 +1,102 @@
+<!-- HEADER -->
+<div
+  class="d-flex align-items-center justify-content-between px-3 shadow bg-white"
+  style="position: fixed; top: 0; left: 0; right: 0; height: 50px; z-index: 1030">
+  <span class="h5 mb-0">.fit Routes Mapper</span>
+  <button type="button" class="btn btn-secondary" (click)="reset()">Reset Map</button>
+</div>
+
+<!-- MAP OUTPUT -->
+<div *ngIf="mapsApiLoaded" id="map" style="height: 100vh; width: 100vw; margin: 0; padding-top: 50px">
+  <google-map height="100%" width="100%" [zoom]="mapZoom" [center]="mapCenter">
+    <ng-container *ngFor="let routeData of parsedRouteData">
+      <map-polyline
+        [options]="routeData.polylineOptions"
+        (polylineClick)="onPolylineClick($event, routeData.metadata)" />
+    </ng-container>
+  </google-map>
+</div>
+
+<!-- INPUT MODAL -->
+<ng-template #inputModal let-modal>
+  <div class="modal-header">
+    <h4 class="modal-title" id="modal-basic-title">.fit Routes Mapper</h4>
+  </div>
+  <div
+    class="modal-body d-flex flex-column justify-content-center align-items-center text-center"
+    style="min-height: 300px">
+    <!-- ERROR MESSAGING -->
+    <div *ngIf="errorMessage" class="alert alert-danger" role="alert">{{ errorMessage }}</div>
+
+    <!-- DRAG & DROP AREA -->
+    <div *ngIf="mapsApiLoaded && !parsingFiles">
+      <div
+        class="border border-primary rounded p-5 text-center"
+        style="width: 100%; max-width: 400px; background-color: #f8f9fa"
+        (dragover)="onDragOver($event)"
+        (drop)="onDrop($event)">
+        <div class="mb-3">
+          <i *ngIf="!inputFiles.length" class="bi bi-file-earmark-arrow-up" style="font-size: 64px; color: #0d6efd"></i>
+          <i
+            *ngIf="inputFiles.length"
+            class="bi bi-file-earmark-check-fill"
+            style="font-size: 64px; color: #0dfd2d"></i>
+        </div>
+        <p class="mb-3"><a href="#" (click)="triggerFileInput($event)">Choose a folder</a> or drag it here</p>
+        <input
+          #fileInput
+          type="file"
+          webkitdirectory
+          directory
+          multiple
+          (change)="onFileChange($event)"
+          class="d-none" />
+      </div>
+
+      <!-- OPTIONS -->
+      <p class="h5 mt-2">Activity types to load:</p>
+      <div class="d-flex justify-content-center mb-4 flex-wrap gap-3" style="max-width: 400px">
+        <div class="form-check" style="min-width: 100px" *ngFor="let sport of sports">
+          <input class="form-check-input" type="checkbox" [id]="sport" [(ngModel)]="activities[sport]" />
+          <label class="form-check-label text-capitalize" [for]="sport">
+            {{ sport }}
+          </label>
+        </div>
+      </div>
+      <div class="d-flex justify-content-center mb-4 flex-wrap gap-3 mt-2">
+        <button type="button" class="btn btn-primary" (click)="loadFiles()" [disabled]="!inputFiles.length">
+          Map Routes
+        </button>
+        <div class="form-check align-content-center">
+          <input class="form-check-input" type="checkbox" id="randomizeRouteColor" [(ngModel)]="randomizeRouteColor" />
+          <label class="form-check-label" for="randomizeRouteColor"> Randomize route color </label>
+        </div>
+      </div>
+    </div>
+
+    <!-- LOADING -->
+    <div *ngIf="parsingFiles" style="min-width: 400px">
+      <mat-progress-bar mode="determinate" [value]="parsedPercent()"></mat-progress-bar>
+      Loading file {{ fileIndex }} of {{ fileCount }}
+    </div>
+  </div>
+</ng-template>
+
+<!-- ROUTE DETAIL MODAL -->
+<ng-template #routeDetailModal let-modal>
+  <div class="modal-header">
+    <h4 class="modal-title" id="modal-basic-title">Route Details</h4>
+    <button type="button" class="btn-close" aria-label="Close" (click)="modal.dismiss('Cross click')"></button>
+  </div>
+  <div class="modal-body">
+    <ul>
+      <li *ngFor="let data of routeMetadata | keyvalue">
+        <b>{{ data.key }}:</b>
+        {{ data.value }}
+      </li>
+    </ul>
+  </div>
+  <div class="modal-footer">
+    <button type="button" class="btn btn-outline-secondary" (click)="modal.close('Close click')">Close</button>
+  </div>
+</ng-template>
