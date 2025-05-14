@@ -1,59 +1,65 @@
-# FitRoutesMapper
+# Fit Routes Mapper
 
-This project was generated using [Angular CLI](https://github.com/angular/angular-cli) version 19.2.9.
+The **Fit Routes Mapper** is an Angular standalone application designed to parse `.fit` files (commonly used in fitness tracking devices) and display the routes on a Google Map. The app allows users to upload `.fit` files, visualize parsed routes, and interact with route details.
 
-## Development server
+## Features
 
-To start a local development server, run:
+- **Drag-and-Drop File Upload**: Easily upload `.fit` files by dragging and dropping them into the app.
+- **Google Maps Integration**: Visualize routes on an interactive Google Map.
+- **Route Parsing**: Parse `.fit` files to extract route data and display it with customizable options.
+- **Activity Filtering**: Select specific activities (e.g., cycling, running) to include in the parsed data.
+- **Randomized Route Colors**: Option to randomize route colors for better visualization.
+- **Progress Tracking**: Displays a progress bar while parsing files.
+- **Route Details Modal**: View detailed metadata for each route by clicking on the route polyline.
+- **Error Handling**: Displays error messages for invalid or unsupported files.
+- **Reset Functionality**: Quickly reset the app to its initial state.
 
-```bash
-ng serve
-```
+## Technologies Used
 
-Once the server is running, open your browser and navigate to `http://localhost:4200/`. The application will automatically reload whenever you modify any of the source files.
+- **Angular**: Standalone component architecture.
+- **Google Maps JavaScript API**: For map rendering and route visualization.
+- **Angular Material**: Progress bar for file parsing progress.
+- **Bootstrap Modals**: For displaying input and route detail modals.
+- **TypeScript**: Strongly typed language for better maintainability.
 
-## Code scaffolding
+## Setup and Installation
 
-Angular CLI includes powerful code scaffolding tools. To generate a new component, run:
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/creightonlinza/fit-routes-mapper.git
+   cd fit-routes-mapper
+   ```
 
-```bash
-ng generate component component-name
-```
+2. Install dependencies:
+   ```bash
+   npm install
+   ```
 
-For a complete list of available schematics (such as `components`, `directives`, or `pipes`), run:
+3. Add your Google Maps API key to up the environment variables:
+   - `environment.ts` file in the environments folder.
+   - Default map settings can be customized there as well.
 
-```bash
-ng generate --help
-```
+4. Run the application:
+   ```bash
+   ng serve
+   ```
 
-## Building
+5. Open your browser and navigate to `http://localhost:4200`.
 
-To build the project run:
+## How to Use
 
-```bash
-ng build
-```
+1. **Upload Files**:
+   - Drag and drop `.fit` files into the app, or click the file input button to select files manually.
 
-This will compile your project and store the build artifacts in the `dist/` directory. By default, the production build optimizes your application for performance and speed.
+2. **Parse Files**:
+   - The app will parse the uploaded `.fit` files and display the routes on the map.
 
-## Running unit tests
+3. **Interact with Routes**:
+   - Click on a route polyline to view detailed metadata in a modal.
 
-To execute unit tests with the [Karma](https://karma-runner.github.io) test runner, use the following command:
+4. **Customize Options**:
+   - Toggle activity types (e.g., cycling, running) to filter the parsed data.
+   - Enable or disable random route colors.
 
-```bash
-ng test
-```
-
-## Running end-to-end tests
-
-For end-to-end (e2e) testing, run:
-
-```bash
-ng e2e
-```
-
-Angular CLI does not come with an end-to-end testing framework by default. You can choose one that suits your needs.
-
-## Additional Resources
-
-For more information on using the Angular CLI, including detailed command references, visit the [Angular CLI Overview and Command Reference](https://angular.dev/tools/cli) page.
+5. **Reset the App**:
+   - Click the reset button to reload the app and clear all data.
