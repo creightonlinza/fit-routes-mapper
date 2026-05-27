@@ -8,11 +8,15 @@ The **Fit Routes Mapper** is an Angular standalone application designed to parse
 - **Google Maps Integration**: Visualize routes on an interactive Google Map.
 - **Route Parsing**: Parse `.fit` files to extract route data and display it with customizable options.
 - **Activity Filtering**: Select specific activities (e.g., cycling, running) to include in the parsed data.
-- **Randomized Route Colors**: Option to randomize route colors for better visualization.
+- **Route Color Modes**: Choose default, randomized, sport-based, or date-gradient route colors.
 - **Progress Tracking**: Displays a progress bar while parsing files.
+- **Import Summary**: Shows how many files loaded, were skipped, had no GPS data, failed decoding, failed reading, or were not `.fit` files.
+- **Route Drawer**: Manage loaded routes with visibility, zoom, details, and delete controls.
+- **Map Controls**: Switch map type and adjust global route width and opacity.
+- **Visible Route Exports**: Export visible routes as GeoJSON or CSV.
 - **Route Details Modal**: View detailed metadata for each route by clicking on the route polyline.
 - **Error Handling**: Displays error messages for invalid or unsupported files.
-- **Reset Functionality**: Quickly reset the app to its initial state.
+- **Clear Functionality**: Clear loaded routes without reloading the Google Maps runtime.
 
 ## Technologies Used
 
@@ -59,10 +63,15 @@ The **Fit Routes Mapper** is an Angular standalone application designed to parse
 
 3. **Interact with Routes**:
    - Click on a route polyline to view detailed metadata in a modal.
+   - Use the route drawer to hide, zoom to, inspect, or delete individual routes.
 
 4. **Customize Options**:
    - Toggle activity types (e.g., cycling, running) to filter the parsed data.
-   - Enable or disable random route colors.
+   - Choose units and route color mode before loading files.
+   - Adjust map type, route width, and route opacity after loading.
 
-5. **Reset the App**:
-   - Click the reset button to reload the app and clear all data.
+5. **Export Visible Routes**:
+   - Use the GeoJSON or CSV buttons to export only the routes currently visible on the map.
+
+6. **Clear the App**:
+   - Click the clear button to remove loaded routes and start a new import.

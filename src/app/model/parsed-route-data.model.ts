@@ -11,6 +11,23 @@ export interface RouteMetadata {
 }
 
 export interface ParsedRouteData {
+  id: string;
+  fileName: string;
+  fileSize: number;
+  lastModified: number;
+  visible: boolean;
+  selected: boolean;
+  hovered: boolean;
+  baseStrokeColor: string;
   polylineOptions: google.maps.PolylineOptions;
   metadata?: RouteMetadata;
+}
+
+export type FitParseStatus = 'loaded' | 'skipped-sport' | 'no-gps' | 'decode-error' | 'read-error';
+
+export interface FitParseResult {
+  status: FitParseStatus;
+  fileName: string;
+  routeData?: ParsedRouteData;
+  errorMessage?: string;
 }

@@ -1,51 +1,172 @@
-<!-- HEADER -->
-<div
-  class="d-flex align-items-center justify-content-between px-3 shadow bg-white"
-  style="position: fixed; top: 0; left: 0; right: 0; height: 50px; z-index: 1030">
-  <div class="d-flex align-items-center gap-3">
+<header class="app-header shadow bg-white">
+  <div class="header-title">
+    <button type="button" class="btn btn-outline-secondary btn-sm drawer-toggle" (click)="toggleDrawer()">
+      <i class="bi bi-layout-sidebar-inset-reverse"></i>
+    </button>
     <span class="h5 mb-0">.fit Routes Mapper</span>
-    <span *ngIf="hasLoadedRoutes()" class="small text-muted">Total: {{ totalDistanceLabel() }}</span>
+    <span *ngIf="hasLoadedRoutes()" class="small text-muted">Visible total: {{ totalDistanceLabel() }}</span>
   </div>
-  <button type="button" class="btn btn-secondary" (click)="reset()">Reset Map</button>
-</div>
+  <div class="header-actions">
+    <button type="button" class="btn btn-outline-primary btn-sm" (click)="openInputModal()">
+      <i class="bi bi-folder-plus"></i>
+      Add files
+    </button>
+    <button type="button" class="btn btn-outline-secondary btn-sm" (click)="setMapViewport()" [disabled]="!hasVisibleRoutes()">
+      <i class="bi bi-arrows-fullscreen"></i>
+      Fit visible
+    </button>
+    <button type="button" class="btn btn-outline-success btn-sm" (click)="exportGeoJson()" [disabled]="!hasVisibleRoutes()">
+      <i class="bi bi-filetype-json"></i>
+      GeoJSON
+    </button>
+    <button type="button" class="btn btn-outline-success btn-sm" (click)="exportCsv()" [disabled]="!hasVisibleRoutes()">
+      <i class="bi bi-filetype-csv"></i>
+      CSV
+    </button>
+    <button type="button" class="btn btn-secondary btn-sm" (click)="clearRoutes()" [disabled]="!hasLoadedRoutes()">
+      <i class="bi bi-trash3"></i>
+      Clear
+    </button>
+  </div>
+</header>
 
-<!-- MAP OUTPUT -->
-<div *ngIf="mapsApiLoaded" id="map" style="height: 100vh; width: 100vw; margin: 0; padding-top: 50px">
-  <google-map height="100%" width="100%" [zoom]="mapZoom" [center]="mapCenter">
-    <ng-container *ngFor="let routeData of parsedRouteData">
-      <map-polyline
-        [options]="routeData.polylineOptions"
-        (polylineClick)="onPolylineClick($event, routeData.metadata)" />
-    </ng-container>
-  </google-map>
-</div>
+<main class="app-shell" [class.drawer-open]="drawerOpen">
+  <section *ngIf="mapsApiLoaded" class="map-shell">
+    <google-map height="100%" width="100%" [zoom]="mapZoom" [center]="mapCenter" [options]="mapOptions">
+      <ng-container *ngFor="let routeData of visibleRoutes()">
+        <map-polyline
+          [options]="routeData.polylineOptions"
+          (polylineClick)="onPolylineClick($event, routeData)"
+          (polylineMouseover)="onPolylineMouseOver(routeData)"
+          (polylineMouseout)="onPolylineMouseOut(routeData)" />
+      </ng-container>
+    </google-map>
+  </section>
 
-<!-- INPUT MODAL -->
+  <aside class="route-drawer" [class.open]="drawerOpen">
+    <div class="drawer-section">
+      <div class="drawer-heading">
+        <h2>Routes</h2>
+        <span class="text-muted small">{{ visibleRoutes().length }} visible / {{ parsedRouteData.length }} loaded</span>
+      </div>
+
+      <div class="control-grid">
+        <label class="form-label" for="mapType">Map</label>
+        <select id="mapType" class="form-select form-select-sm" [(ngModel)]="mapTypeId" (ngModelChange)="updateMapType()">
+          <option *ngFor="let option of mapTypeOptions" [ngValue]="option.value">{{ option.label }}</option>
+        </select>
+
+        <label class="form-label" for="routeWidth">Width</label>
+        <input
+          id="routeWidth"
+          type="range"
+          class="form-range"
+          min="1"
+          max="12"
+          step="1"
+          [(ngModel)]="routeWidth"
+          (ngModelChange)="updateRouteStyles()" />
+
+        <label class="form-label" for="routeOpacity">Opacity</label>
+        <input
+          id="routeOpacity"
+          type="range"
+          class="form-range"
+          min="0.1"
+          max="1"
+          step="0.1"
+          [(ngModel)]="routeOpacity"
+          (ngModelChange)="updateRouteStyles()" />
+      </div>
+    </div>
+
+    <div *ngIf="hasParsingSummary" class="drawer-section summary-section">
+      <h2>Last import</h2>
+      <dl class="summary-grid">
+        <ng-container *ngFor="let item of parsingSummaryItems()">
+          <dt>{{ item.label }}</dt>
+          <dd>{{ item.value }}</dd>
+        </ng-container>
+      </dl>
+    </div>
+
+    <div class="route-list">
+      <div *ngIf="!hasLoadedRoutes()" class="empty-state text-muted">
+        No routes loaded.
+      </div>
+
+      <article
+        *ngFor="let route of parsedRouteData"
+        class="route-row"
+        [class.selected]="route.selected"
+        [class.muted]="!route.visible">
+        <div class="route-row-main">
+          <span class="route-color" [style.background-color]="route.baseStrokeColor"></span>
+          <div class="route-copy">
+            <div class="route-name" [title]="route.fileName">{{ route.fileName }}</div>
+            <div class="route-meta text-muted">
+              <span class="text-capitalize">{{ route.metadata?.sport || 'Unknown' }}</span>
+              <span>{{ routeDistanceLabel(route) }}</span>
+              <span>{{ routeDurationLabel(route) }}</span>
+            </div>
+            <div class="route-date text-muted">{{ routeStartLabel(route) }} · {{ routePointCount(route) }} pts</div>
+          </div>
+        </div>
+        <div class="route-actions">
+          <button
+            type="button"
+            class="btn btn-outline-secondary btn-sm icon-btn"
+            [attr.aria-label]="route.visible ? 'Hide route' : 'Show route'"
+            [title]="route.visible ? 'Hide route' : 'Show route'"
+            (click)="toggleRouteVisibility(route)">
+            <i class="bi" [class.bi-eye]="route.visible" [class.bi-eye-slash]="!route.visible"></i>
+          </button>
+          <button
+            type="button"
+            class="btn btn-outline-secondary btn-sm icon-btn"
+            aria-label="Route details"
+            title="Route details"
+            (click)="selectRoute(route, true)">
+            <i class="bi bi-info-circle"></i>
+          </button>
+          <button
+            type="button"
+            class="btn btn-outline-secondary btn-sm icon-btn"
+            aria-label="Zoom to route"
+            title="Zoom to route"
+            (click)="fitRoute(route)"
+            [disabled]="!route.visible">
+            <i class="bi bi-zoom-in"></i>
+          </button>
+          <button
+            type="button"
+            class="btn btn-outline-danger btn-sm icon-btn"
+            aria-label="Delete route"
+            title="Delete route"
+            (click)="deleteRoute(route)">
+            <i class="bi bi-x-lg"></i>
+          </button>
+        </div>
+      </article>
+    </div>
+  </aside>
+</main>
+
 <ng-template #inputModal let-modal>
   <div class="modal-header">
-    <h4 class="modal-title" id="modal-basic-title">.fit Routes Mapper</h4>
+    <h4 class="modal-title" id="input-modal-title">.fit Routes Mapper</h4>
   </div>
-  <div
-    class="modal-body d-flex flex-column justify-content-center align-items-center text-center"
-    style="min-height: 300px">
-    <!-- ERROR MESSAGING -->
+  <div class="modal-body upload-modal-body">
     <div *ngIf="errorMessage" class="alert alert-danger" role="alert">{{ errorMessage }}</div>
 
-    <!-- DRAG & DROP AREA -->
-    <div *ngIf="mapsApiLoaded && !parsingFiles">
-      <div
-        class="border border-primary rounded p-5 text-center"
-        style="width: 100%; max-width: 400px; background-color: #f8f9fa"
-        (dragover)="onDragOver($event)"
-        (drop)="onDrop($event)">
+    <div *ngIf="mapsApiLoaded && !parsingFiles" class="upload-content">
+      <div class="drop-zone" (dragover)="onDragOver($event)" (drop)="onDrop($event)">
         <div class="mb-3">
-          <i *ngIf="!inputFiles.length" class="bi bi-file-earmark-arrow-up" style="font-size: 64px; color: #0d6efd"></i>
-          <i
-            *ngIf="inputFiles.length"
-            class="bi bi-file-earmark-check-fill"
-            style="font-size: 64px; color: #0dfd2d"></i>
+          <i *ngIf="!inputFiles.length" class="bi bi-file-earmark-arrow-up upload-icon"></i>
+          <i *ngIf="inputFiles.length" class="bi bi-file-earmark-check-fill upload-icon selected"></i>
         </div>
         <p class="mb-3"><a href="#" (click)="triggerFileInput($event)">Choose a folder</a> or drag it here</p>
+        <p *ngIf="inputFiles.length" class="small text-muted mb-0">{{ inputFiles.length }} file(s) selected</p>
         <input
           #fileInput
           type="file"
@@ -56,18 +177,18 @@
           class="d-none" />
       </div>
 
-      <!-- OPTIONS -->
-      <p class="h5 mt-2">Activity types to load:</p>
-      <div class="d-flex justify-content-center mb-4 flex-wrap gap-3" style="max-width: 400px">
-        <div class="form-check" style="min-width: 100px" *ngFor="let sport of sports">
+      <p class="h5 mt-3">Activity types to load:</p>
+      <div class="activity-options">
+        <div class="form-check" *ngFor="let sport of sports">
           <input class="form-check-input" type="checkbox" [id]="sport" [(ngModel)]="activities[sport]" />
           <label class="form-check-label text-capitalize" [for]="sport">
             {{ sport }}
           </label>
         </div>
       </div>
+
       <p class="h5 mt-2">Units:</p>
-      <div class="btn-group mb-4" role="group" aria-label="Unit system">
+      <div class="btn-group mb-3" role="group" aria-label="Unit system">
         <input
           type="radio"
           class="btn-check"
@@ -88,19 +209,28 @@
           autocomplete="off" />
         <label class="btn btn-outline-secondary" for="unitSystemMetric">Metric</label>
       </div>
-      <div class="d-flex justify-content-center mb-4 flex-wrap gap-3 mt-2">
-        <button type="button" class="btn btn-primary" (click)="loadFiles()" [disabled]="!inputFiles.length">
-          Map Routes
-        </button>
-        <div class="form-check align-content-center">
-          <input class="form-check-input" type="checkbox" id="randomizeRouteColor" [(ngModel)]="randomizeRouteColor" />
-          <label class="form-check-label" for="randomizeRouteColor"> Randomize route color </label>
-        </div>
+
+      <p class="h5 mt-2">Route colors:</p>
+      <div class="btn-group color-mode-group mb-4" role="group" aria-label="Route color mode">
+        <input type="radio" class="btn-check" name="colorMode" id="colorDefault" value="default" [(ngModel)]="colorMode" autocomplete="off" />
+        <label class="btn btn-outline-secondary" for="colorDefault">Default</label>
+
+        <input type="radio" class="btn-check" name="colorMode" id="colorRandom" value="random" [(ngModel)]="colorMode" autocomplete="off" />
+        <label class="btn btn-outline-secondary" for="colorRandom">Random</label>
+
+        <input type="radio" class="btn-check" name="colorMode" id="colorSport" value="sport" [(ngModel)]="colorMode" autocomplete="off" />
+        <label class="btn btn-outline-secondary" for="colorSport">By sport</label>
+
+        <input type="radio" class="btn-check" name="colorMode" id="colorDate" value="date" [(ngModel)]="colorMode" autocomplete="off" />
+        <label class="btn btn-outline-secondary" for="colorDate">By date</label>
       </div>
+
+      <button type="button" class="btn btn-primary" (click)="loadFiles()" [disabled]="!inputFiles.length">
+        Map Routes
+      </button>
     </div>
 
-    <!-- LOADING -->
-    <div *ngIf="parsingFiles" style="min-width: 400px">
+    <div *ngIf="parsingFiles" class="loading-content">
       <div
         class="progress route-load-progress"
         role="progressbar"
@@ -114,14 +244,13 @@
   </div>
 </ng-template>
 
-<!-- ROUTE DETAIL MODAL -->
 <ng-template #routeDetailModal let-modal>
   <div class="modal-header">
-    <h4 class="modal-title" id="modal-basic-title">Route Details</h4>
+    <h4 class="modal-title" id="route-detail-title">Route Details</h4>
     <button type="button" class="btn-close" aria-label="Close" (click)="modal.dismiss('Cross click')"></button>
   </div>
   <div class="modal-body">
-    <ul>
+    <ul class="detail-list">
       <li *ngFor="let item of routeDetailItems()">
         <b>{{ item.label }}:</b>
         {{ item.value }}

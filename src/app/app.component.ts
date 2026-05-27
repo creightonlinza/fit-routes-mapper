@@ -6,16 +6,45 @@ import { GoogleMap, GoogleMapsModule } from '@angular/google-maps';
 import { Loader } from '@googlemaps/js-api-loader';
 import { NgbModal, NgbModalRef } from '@ng-bootstrap/ng-bootstrap';
 
-import { FitParserService } from './service/fit-parser.service';
-import { ParsedRouteData, RouteMetadata } from './model/parsed-route-data.model';
+import { FitParseResult, ParsedRouteData, RouteMetadata } from './model/parsed-route-data.model';
 import { Sport } from './model/sport.model';
 import { UnitSystem } from './model/unit-system.model';
+import { FitParserService } from './service/fit-parser.service';
+import { RouteExportService } from './service/route-export.service';
 import { EnvironmentConfig, environment } from '../environments/environment';
+
+type ColorMode = 'default' | 'random' | 'sport' | 'date';
+type MapTypeId = 'roadmap' | 'terrain' | 'satellite' | 'hybrid';
 
 interface RouteDetailItem {
   label: string;
   value: string;
 }
+
+interface ParsingSummary {
+  loaded: number;
+  skippedSport: number;
+  noGps: number;
+  decodeError: number;
+  readError: number;
+  nonFit: number;
+}
+
+interface MapTypeOption {
+  label: string;
+  value: MapTypeId;
+}
+
+const SPORT_COLORS: Record<Sport, string> = {
+  [Sport.Cycling]: '#0d6efd',
+  [Sport.Hiking]: '#198754',
+  [Sport.Kayaking]: '#0dcaf0',
+  [Sport.Running]: '#dc3545',
+  [Sport.Walking]: '#6f42c1',
+};
+
+const DATE_COLOR_START = { r: 13, g: 110, b: 253 };
+const DATE_COLOR_END = { r: 220, g: 53, b: 69 };
 
 @Component({
   selector: 'app-root',
@@ -31,22 +60,41 @@ export class AppComponent implements AfterViewInit {
   @ViewChild(GoogleMap) map?: GoogleMap;
 
   private fitParserService = inject(FitParserService);
+  private routeExportService = inject(RouteExportService);
   private modalService = inject(NgbModal);
   private modalRef?: NgbModalRef;
   private appConfig: EnvironmentConfig = environment;
+  private routeId = 0;
 
   mapCenter = environment.defaultMapCenter;
   mapZoom = environment.defaultMapZoom;
+  mapTypeId: MapTypeId = 'roadmap';
+  mapOptions: google.maps.MapOptions = { mapTypeId: this.mapTypeId };
   sports = Object.values(Sport);
   inputFiles: File[] = [];
   parsedRouteData: ParsedRouteData[] = [];
   routeMetadata: Partial<RouteMetadata> = {};
+  routeDetailFileName = '';
   mapsApiLoaded = false;
   parsingFiles = false;
   errorMessage = '';
   fileIndex = 0;
   fileCount = 0;
   unitSystem: UnitSystem = environment.defaultUnitSystem;
+  colorMode: ColorMode = 'default';
+  routeWidth = environment.defaultStrokeWeight;
+  routeOpacity = environment.defaultStrokeOpacity;
+  drawerOpen = true;
+  selectedRouteId?: string;
+  parsingSummary: ParsingSummary = this.emptyParsingSummary();
+  hasParsingSummary = false;
+
+  mapTypeOptions: MapTypeOption[] = [
+    { label: 'Road', value: 'roadmap' },
+    { label: 'Terrain', value: 'terrain' },
+    { label: 'Satellite', value: 'satellite' },
+    { label: 'Hybrid', value: 'hybrid' },
+  ];
 
   // default input options
   activities: Record<string, boolean> = {
@@ -56,19 +104,20 @@ export class AppComponent implements AfterViewInit {
     running: true,
     walking: false,
   };
-  randomizeRouteColor = false;
 
   async ngAfterViewInit(): Promise<void> {
     this.appConfig = await this.loadAppConfig();
     this.mapCenter = this.appConfig.defaultMapCenter;
     this.mapZoom = this.appConfig.defaultMapZoom;
     this.unitSystem = this.appConfig.defaultUnitSystem;
+    this.routeWidth = this.appConfig.defaultStrokeWeight;
+    this.routeOpacity = this.appConfig.defaultStrokeOpacity;
     this.loadMap();
-    this.modalRef = this.modalService.open(this.inputModal, { centered: true, beforeDismiss: () => false });
+    this.openInputModal(false);
   }
 
-  triggerFileInput(event: MouseEvent): void {
-    event.preventDefault();
+  triggerFileInput(event?: MouseEvent): void {
+    event?.preventDefault();
     this.fileInput.nativeElement.click();
   }
 
@@ -102,52 +151,57 @@ export class AppComponent implements AfterViewInit {
       return;
     }
 
-    const fitFiles = this.inputFiles.filter(file => file.name.endsWith('.fit'));
+    const nonFit = this.inputFiles.filter(file => !this.isFitFile(file)).length;
+    const fitFiles = this.inputFiles.filter(file => this.isFitFile(file));
     if (fitFiles.length === 0) {
+      this.parsingSummary = { ...this.emptyParsingSummary(), nonFit };
+      this.hasParsingSummary = nonFit > 0;
       this.errorMessage = 'No .fit files found';
       return;
     }
 
     this.fileCount = fitFiles.length;
+    this.fileIndex = 0;
     this.parsingFiles = true;
+    this.parsingSummary = { ...this.emptyParsingSummary(), nonFit };
+    this.hasParsingSummary = false;
     const loadedRouteCount = this.parsedRouteData.length;
 
     for (const [index, file] of fitFiles.entries()) {
       this.fileIndex = index + 1;
-      const initialRouteData: ParsedRouteData = {
-        polylineOptions: {
-          strokeColor: this.randomizeRouteColor ? this.generateRandomColor() : this.appConfig.defaultStrokeColor,
-          strokeOpacity: this.appConfig.defaultStrokeOpacity,
-          strokeWeight: this.appConfig.defaultStrokeWeight,
-          clickable: true,
-          path: [],
-        },
-      };
+      const initialRouteData = this.createInitialRouteData(file);
+      const parseResult = await this.fitParserService.parseFitFile(file, selectedActivities, initialRouteData);
 
-      const parsedRouteData = await this.fitParserService.parseFitFile(
-        file,
-        selectedActivities,
-        initialRouteData
-      );
+      this.recordParseResult(parseResult);
 
-      if (parsedRouteData) {
-        this.parsedRouteData.push(parsedRouteData);
+      if (parseResult.status === 'loaded' && parseResult.routeData) {
+        this.prepareLoadedRoute(parseResult.routeData);
+        this.parsedRouteData.push(parseResult.routeData);
       }
     }
 
+    if (this.colorMode === 'date') {
+      this.applyDateColors();
+    }
+
+    this.refreshAllPolylineOptions();
+    this.hasParsingSummary = true;
+    this.parsingFiles = false;
+    this.inputFiles = [];
+    this.clearNativeFileInput();
+
     if (this.parsedRouteData.length === loadedRouteCount) {
       this.errorMessage = 'No matching routes were found in the selected .fit files';
-      this.parsingFiles = false;
       return;
     }
 
     this.setMapViewport();
-    this.parsingFiles = false;
     this.modalRef?.close();
+    this.drawerOpen = true;
   }
 
   setMapViewport(): void {
-    const bounds = this.buildRouteBounds();
+    const bounds = this.buildRouteBounds(this.visibleRoutes());
     if (!bounds) {
       return;
     }
@@ -159,19 +213,38 @@ export class AppComponent implements AfterViewInit {
     }
   }
 
-  parsedPercent(): number {
-    return Math.round((this.fileIndex / this.fileCount) * 100);
+  fitRoute(route: ParsedRouteData): void {
+    const bounds = this.buildRouteBounds([route]);
+    if (!bounds) {
+      return;
+    }
+
+    this.selectRoute(route, false);
+    this.mapCenter = bounds.getCenter().toJSON();
+    this.map?.googleMap?.fitBounds(bounds);
   }
 
-  onPolylineClick(event: google.maps.MapMouseEvent, routeMetadata?: RouteMetadata): void {
-    if (routeMetadata) {
-      this.routeMetadata = routeMetadata;
-      this.modalService.open(this.routeDetailModal, { centered: true });
-    }
+  parsedPercent(): number {
+    return this.fileCount ? Math.round((this.fileIndex / this.fileCount) * 100) : 0;
+  }
+
+  onPolylineClick(event: google.maps.MapMouseEvent, route: ParsedRouteData): void {
+    this.selectRoute(route, true);
+  }
+
+  onPolylineMouseOver(route: ParsedRouteData): void {
+    route.hovered = true;
+    this.updatePolylineOptions(route);
+  }
+
+  onPolylineMouseOut(route: ParsedRouteData): void {
+    route.hovered = false;
+    this.updatePolylineOptions(route);
   }
 
   routeDetailItems(routeMetadata: Partial<RouteMetadata> = this.routeMetadata): RouteDetailItem[] {
     return [
+      { label: 'File', value: this.routeDetailFileName || 'N/A' },
       { label: 'Sport', value: this.formatSport(routeMetadata.sport) },
       { label: 'Start Time', value: this.formatDate(routeMetadata.startTime) },
       { label: 'Elapsed Time', value: this.formatDuration(routeMetadata.totalTimerTime) },
@@ -186,12 +259,131 @@ export class AppComponent implements AfterViewInit {
     return this.parsedRouteData.length > 0;
   }
 
+  visibleRoutes(): ParsedRouteData[] {
+    return this.parsedRouteData.filter(route => route.visible);
+  }
+
+  hasVisibleRoutes(): boolean {
+    return this.visibleRoutes().length > 0;
+  }
+
   totalDistanceLabel(): string {
     return this.formatDistance(this.totalDistanceMeters());
   }
 
-  reset(): void {
-    window.location.reload();
+  routeDistanceLabel(route: ParsedRouteData): string {
+    return this.formatDistance(route.metadata?.totalDistance);
+  }
+
+  routeDurationLabel(route: ParsedRouteData): string {
+    return this.formatDuration(route.metadata?.totalTimerTime);
+  }
+
+  routeStartLabel(route: ParsedRouteData): string {
+    return this.formatDate(route.metadata?.startTime);
+  }
+
+  routePointCount(route: ParsedRouteData): number {
+    return this.routePathPoints(route.polylineOptions.path).length;
+  }
+
+  parsingSummaryItems(): RouteDetailItem[] {
+    return [
+      { label: 'Loaded', value: String(this.parsingSummary.loaded) },
+      { label: 'Skipped by sport', value: String(this.parsingSummary.skippedSport) },
+      { label: 'No GPS data', value: String(this.parsingSummary.noGps) },
+      { label: 'Decode errors', value: String(this.parsingSummary.decodeError) },
+      { label: 'Read errors', value: String(this.parsingSummary.readError) },
+      { label: 'Non-FIT files', value: String(this.parsingSummary.nonFit) },
+    ];
+  }
+
+  openInputModal(clearError = true): void {
+    if (clearError) {
+      this.errorMessage = '';
+    }
+    this.modalRef = this.modalService.open(this.inputModal, { centered: true, beforeDismiss: () => false });
+  }
+
+  toggleDrawer(): void {
+    this.drawerOpen = !this.drawerOpen;
+  }
+
+  toggleRouteVisibility(route: ParsedRouteData): void {
+    route.visible = !route.visible;
+    if (!route.visible && route.id === this.selectedRouteId) {
+      this.selectedRouteId = undefined;
+      route.selected = false;
+      this.routeMetadata = {};
+      this.routeDetailFileName = '';
+    }
+    this.updatePolylineOptions(route);
+  }
+
+  deleteRoute(route: ParsedRouteData): void {
+    this.parsedRouteData = this.parsedRouteData.filter(item => item.id !== route.id);
+    if (route.id === this.selectedRouteId) {
+      this.selectedRouteId = undefined;
+      this.routeMetadata = {};
+      this.routeDetailFileName = '';
+    }
+  }
+
+  clearRoutes(): void {
+    this.parsedRouteData = [];
+    this.inputFiles = [];
+    this.routeMetadata = {};
+    this.routeDetailFileName = '';
+    this.selectedRouteId = undefined;
+    this.errorMessage = '';
+    this.fileIndex = 0;
+    this.fileCount = 0;
+    this.parsingFiles = false;
+    this.parsingSummary = this.emptyParsingSummary();
+    this.hasParsingSummary = false;
+    this.mapCenter = this.appConfig.defaultMapCenter;
+    this.mapZoom = this.appConfig.defaultMapZoom;
+    this.clearNativeFileInput();
+    this.openInputModal();
+  }
+
+  updateMapType(): void {
+    this.mapOptions = { ...this.mapOptions, mapTypeId: this.mapTypeId };
+  }
+
+  updateRouteStyles(): void {
+    this.refreshAllPolylineOptions();
+  }
+
+  exportGeoJson(): void {
+    if (!this.hasVisibleRoutes()) {
+      return;
+    }
+
+    this.downloadTextFile('fit-routes.geojson', 'application/geo+json', this.routeExportService.buildGeoJson(this.parsedRouteData));
+  }
+
+  exportCsv(): void {
+    if (!this.hasVisibleRoutes()) {
+      return;
+    }
+
+    this.downloadTextFile('fit-routes.csv', 'text/csv', this.routeExportService.buildCsv(this.parsedRouteData));
+  }
+
+  selectRoute(route: ParsedRouteData, openModal: boolean): void {
+    this.selectedRouteId = route.id;
+    this.routeMetadata = route.metadata ?? {};
+    this.routeDetailFileName = route.fileName;
+
+    for (const routeData of this.parsedRouteData) {
+      routeData.selected = routeData.id === route.id;
+      this.updatePolylineOptions(routeData);
+    }
+
+    if (openModal) {
+      this.modalService.open(this.routeDetailModal, { centered: true });
+    }
   }
 
   private loadMap(): void {
@@ -238,6 +430,122 @@ export class AppComponent implements AfterViewInit {
 
   private selectedActivities(): Sport[] {
     return this.sports.filter(sport => this.activities[sport]);
+  }
+
+  private createInitialRouteData(file: File): ParsedRouteData {
+    const baseStrokeColor = this.initialRouteColor();
+
+    return {
+      id: `route-${++this.routeId}`,
+      fileName: file.name,
+      fileSize: file.size,
+      lastModified: file.lastModified,
+      visible: true,
+      selected: false,
+      hovered: false,
+      baseStrokeColor,
+      polylineOptions: {
+        strokeColor: baseStrokeColor,
+        strokeOpacity: this.routeOpacity,
+        strokeWeight: this.routeWidth,
+        clickable: true,
+        path: [],
+      },
+    };
+  }
+
+  private prepareLoadedRoute(route: ParsedRouteData): void {
+    if (this.colorMode === 'sport' && route.metadata?.sport) {
+      route.baseStrokeColor = SPORT_COLORS[route.metadata.sport] ?? this.appConfig.defaultStrokeColor;
+    }
+
+    this.updatePolylineOptions(route);
+  }
+
+  private recordParseResult(parseResult: FitParseResult): void {
+    switch (parseResult.status) {
+      case 'loaded':
+        this.parsingSummary.loaded += 1;
+        break;
+      case 'skipped-sport':
+        this.parsingSummary.skippedSport += 1;
+        break;
+      case 'no-gps':
+        this.parsingSummary.noGps += 1;
+        break;
+      case 'decode-error':
+        this.parsingSummary.decodeError += 1;
+        break;
+      case 'read-error':
+        this.parsingSummary.readError += 1;
+        break;
+    }
+  }
+
+  private refreshAllPolylineOptions(): void {
+    this.parsedRouteData.forEach(route => this.updatePolylineOptions(route));
+  }
+
+  private updatePolylineOptions(route: ParsedRouteData): void {
+    const highlighted = route.selected || route.hovered;
+    const routeWidth = Number(this.routeWidth);
+    const routeOpacity = Number(this.routeOpacity);
+
+    route.polylineOptions = {
+      ...route.polylineOptions,
+      strokeColor: route.baseStrokeColor,
+      strokeOpacity: highlighted ? 1 : routeOpacity,
+      strokeWeight: highlighted ? routeWidth + 3 : routeWidth,
+      zIndex: highlighted ? 1000 : 1,
+      clickable: true,
+    };
+  }
+
+  private initialRouteColor(): string {
+    if (this.colorMode === 'random') {
+      return this.generateRandomColor();
+    }
+
+    return this.appConfig.defaultStrokeColor;
+  }
+
+  private applyDateColors(): void {
+    const datedRoutes = this.parsedRouteData
+      .filter(route => route.metadata?.startTime)
+      .sort((first, second) => {
+        const firstTime = new Date(first.metadata?.startTime ?? 0).getTime();
+        const secondTime = new Date(second.metadata?.startTime ?? 0).getTime();
+        return firstTime - secondTime;
+      });
+
+    if (datedRoutes.length === 0) {
+      return;
+    }
+
+    datedRoutes.forEach((route, index) => {
+      const percent = datedRoutes.length === 1 ? 0 : index / (datedRoutes.length - 1);
+      route.baseStrokeColor = this.interpolateColor(percent);
+    });
+  }
+
+  private interpolateColor(percent: number): string {
+    const r = this.interpolateChannel(DATE_COLOR_START.r, DATE_COLOR_END.r, percent);
+    const g = this.interpolateChannel(DATE_COLOR_START.g, DATE_COLOR_END.g, percent);
+    const b = this.interpolateChannel(DATE_COLOR_START.b, DATE_COLOR_END.b, percent);
+
+    return `#${this.toHex(r)}${this.toHex(g)}${this.toHex(b)}`;
+  }
+
+  private interpolateChannel(start: number, end: number, percent: number): number {
+    return Math.round(start + (end - start) * percent);
+  }
+
+  private toHex(value: number): string {
+    return value.toString(16).padStart(2, '0');
+  }
+
+  private isFitFile(file: File): boolean {
+    return file.name.toLowerCase().endsWith('.fit');
   }
 
   private formatSport(sport: Sport | undefined): string {
@@ -307,7 +615,7 @@ export class AppComponent implements AfterViewInit {
     let totalDistance = 0;
     let hasDistance = false;
 
-    for (const routeData of this.parsedRouteData) {
+    for (const routeData of this.visibleRoutes()) {
       const distance = routeData.metadata?.totalDistance;
 
       if (this.isFiniteNumber(distance)) {
@@ -323,11 +631,11 @@ export class AppComponent implements AfterViewInit {
     return typeof value === 'number' && Number.isFinite(value);
   }
 
-  private buildRouteBounds(): google.maps.LatLngBounds | undefined {
+  private buildRouteBounds(routes: ParsedRouteData[]): google.maps.LatLngBounds | undefined {
     const bounds = new google.maps.LatLngBounds();
     let hasPoints = false;
 
-    for (const routeData of this.parsedRouteData) {
+    for (const routeData of routes) {
       for (const point of this.routePathPoints(routeData.polylineOptions.path)) {
         bounds.extend(point);
         hasPoints = true;
@@ -364,5 +672,32 @@ export class AppComponent implements AfterViewInit {
   private generateRandomColor(): string {
     const randomColor = Math.floor(Math.random() * 16777215).toString(16).padStart(6, '0');
     return `#${randomColor}`;
+  }
+
+  private emptyParsingSummary(): ParsingSummary {
+    return {
+      loaded: 0,
+      skippedSport: 0,
+      noGps: 0,
+      decodeError: 0,
+      readError: 0,
+      nonFit: 0,
+    };
+  }
+
+  private clearNativeFileInput(): void {
+    if (this.fileInput?.nativeElement) {
+      this.fileInput.nativeElement.value = '';
+    }
+  }
+
+  private downloadTextFile(fileName: string, type: string, contents: string): void {
+    const blob = new Blob([contents], { type });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = fileName;
+    anchor.click();
+    URL.revokeObjectURL(url);
   }
 }
