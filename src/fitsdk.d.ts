@@ -6,7 +6,7 @@ declare module '@garmin/fitsdk' {
         messageNumber: string | number,
         message: import('./app/model/record-message.model').RecordMessage
       ) => void;
-    }): void;
+    }): { errors?: unknown[] };
   }
 
   export class Stream {

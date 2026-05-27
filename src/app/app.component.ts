@@ -2,7 +2,6 @@ import { CommonModule } from '@angular/common';
 import { AfterViewInit, Component, ElementRef, inject, TemplateRef, ViewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { GoogleMap, GoogleMapsModule } from '@angular/google-maps';
-import { MatProgressBarModule } from '@angular/material/progress-bar';
 
 import { Loader } from '@googlemaps/js-api-loader';
 import { NgbModal, NgbModalRef } from '@ng-bootstrap/ng-bootstrap';
@@ -21,7 +20,7 @@ interface RouteDetailItem {
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [CommonModule, FormsModule, GoogleMapsModule, MatProgressBarModule],
+  imports: [CommonModule, FormsModule, GoogleMapsModule],
   templateUrl: './app.component.html',
   styleUrl: './app.component.scss',
 })
@@ -111,6 +110,7 @@ export class AppComponent implements AfterViewInit {
 
     this.fileCount = fitFiles.length;
     this.parsingFiles = true;
+    const loadedRouteCount = this.parsedRouteData.length;
 
     for (const [index, file] of fitFiles.entries()) {
       this.fileIndex = index + 1;
@@ -133,6 +133,12 @@ export class AppComponent implements AfterViewInit {
       if (parsedRouteData) {
         this.parsedRouteData.push(parsedRouteData);
       }
+    }
+
+    if (this.parsedRouteData.length === loadedRouteCount) {
+      this.errorMessage = 'No matching routes were found in the selected .fit files';
+      this.parsingFiles = false;
+      return;
     }
 
     this.setMapViewport();
@@ -356,7 +362,7 @@ export class AppComponent implements AfterViewInit {
   }
 
   private generateRandomColor(): string {
-    const randomColor = Math.floor(Math.random() * 16777215).toString(16);
+    const randomColor = Math.floor(Math.random() * 16777215).toString(16).padStart(6, '0');
     return `#${randomColor}`;
   }
 }

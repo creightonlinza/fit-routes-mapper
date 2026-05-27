@@ -79,6 +79,29 @@ describe('AppComponent', () => {
     expect(parseFitFileSpy).not.toHaveBeenCalled();
   });
 
+  it('should keep the input modal open when no matching routes are parsed', async () => {
+    const fixture = TestBed.createComponent(AppComponent);
+    const app = fixture.componentInstance;
+    const fitParserService = TestBed.inject(FitParserService);
+    spyOn(fitParserService, 'parseFitFile').and.resolveTo(undefined);
+
+    app.inputFiles = [new File([], 'activity.fit')];
+
+    await app.loadFiles();
+
+    expect(app.errorMessage).toBe('No matching routes were found in the selected .fit files');
+    expect(app.parsingFiles).toBeFalse();
+    expect(app.hasLoadedRoutes()).toBeFalse();
+  });
+
+  it('should generate six-digit random route colors', () => {
+    const fixture = TestBed.createComponent(AppComponent);
+    const app = fixture.componentInstance;
+    spyOn(Math, 'random').and.returnValue(1 / 16777215);
+
+    expect(app['generateRandomColor']()).toBe('#000001');
+  });
+
   it('should preserve the default map center when loaded routes have no points', () => {
     const fixture = TestBed.createComponent(AppComponent);
     const app = fixture.componentInstance;

@@ -1,8 +1,9 @@
 import { Injectable } from '@angular/core';
-import { Decoder, Stream, Profile } from '@garmin/fitsdk';
 import { ParsedRouteData } from '../model/parsed-route-data.model';
 import { RecordMessage } from '../model/record-message.model';
 import { Sport } from '../model/sport.model';
+
+const FIT_SEMICIRCLES_PER_DEGREE = 11930465;
 
 @Injectable({ providedIn: 'root' })
 export class FitParserService {
@@ -12,10 +13,11 @@ export class FitParserService {
     routeData: ParsedRouteData
   ): Promise<ParsedRouteData | undefined> {
     try {
+      const { Decoder, Stream, Profile } = await this.loadFitSdk();
       const buffer = await this.readFileAsArrayBuffer(file);
       const streamFromFileSync = Stream.fromArrayBuffer(buffer);
       const decoder = new Decoder(streamFromFileSync);
-      const coords = new Map<object, [number, number]>();
+      const coords: [number, number][] = [];
       let includeActivity: boolean | undefined = undefined;
 
       const onMesg = (messageNumber: string | number, message: RecordMessage) => {
@@ -34,21 +36,29 @@ export class FitParserService {
         }
 
         if (Profile.types.mesgNum[messageNumber] === 'record') {
-          coords.set(message.timestamp, [message.positionLat / 11930465, message.positionLong / 11930465]);
+          const coord = this.toLatLng(message.positionLat, message.positionLong);
+          if (coord) {
+            coords.push(coord);
+          }
         }
       };
 
-      decoder.read({ mesgListener: onMesg });
+      const { errors = [] } = decoder.read({ mesgListener: onMesg });
+      if (errors.length > 0) {
+        throw new Error(`FIT decoder reported ${errors.length} error(s).`);
+      }
 
       if (!includeActivity) {
         return;
       }
 
+      if (coords.length === 0) {
+        return;
+      }
+
       routeData.polylineOptions.path = [] as google.maps.LatLngLiteral[];
-      coords.forEach((coord: [number, number]) => {
-        if (this.isValidCoord(coord)) {
-          routeData.polylineOptions?.path?.push(new google.maps.LatLng(coord[0], coord[1]));
-        }
+      coords.forEach(([lat, lng]) => {
+        routeData.polylineOptions?.path?.push(new google.maps.LatLng(lat, lng));
       });
 
       return routeData;
@@ -78,13 +88,26 @@ export class FitParserService {
     });
   }
 
-  private isValidCoord(coord: number[]): coord is [number, number] {
-    return (
-      coord.length === 2 &&
-      typeof coord[0] === 'number' &&
-      typeof coord[1] === 'number' &&
-      !isNaN(coord[0]) &&
-      !isNaN(coord[1])
-    );
+  private async loadFitSdk(): Promise<typeof import('@garmin/fitsdk')> {
+    return import('@garmin/fitsdk');
+  }
+
+  private toLatLng(positionLat: number | null | undefined, positionLong: number | null | undefined): [number, number] | undefined {
+    if (!this.isFiniteNumber(positionLat) || !this.isFiniteNumber(positionLong)) {
+      return;
+    }
+
+    const lat = positionLat / FIT_SEMICIRCLES_PER_DEGREE;
+    const lng = positionLong / FIT_SEMICIRCLES_PER_DEGREE;
+
+    if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+      return;
+    }
+
+    return [lat, lng];
+  }
+
+  private isFiniteNumber(value: number | null | undefined): value is number {
+    return typeof value === 'number' && Number.isFinite(value);
   }
 }

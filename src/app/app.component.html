@@ -101,7 +101,14 @@
 
     <!-- LOADING -->
     <div *ngIf="parsingFiles" style="min-width: 400px">
-      <mat-progress-bar mode="determinate" [value]="parsedPercent()"></mat-progress-bar>
+      <div
+        class="progress route-load-progress"
+        role="progressbar"
+        [attr.aria-valuenow]="parsedPercent()"
+        aria-valuemin="0"
+        aria-valuemax="100">
+        <div class="progress-bar" [style.width.%]="parsedPercent()"></div>
+      </div>
       Loading file {{ fileIndex }} of {{ fileCount }}
     </div>
   </div>

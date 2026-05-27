@@ -8,7 +8,7 @@ export interface RecordMessage {
   maxSpeed: number;
   avgSpeed: number;
   sport: Sport;
-  timestamp: object;
-  positionLat: number;
-  positionLong: number;
+  timestamp?: object | null;
+  positionLat?: number | null;
+  positionLong?: number | null;
 }
