@@ -28,7 +28,7 @@ export function finalizeRouteMetadata(metadata: RouteMetadata | undefined, recor
 
   return {
     ...metadata,
-    maxSpeed: firstFinite(maxFinite(recordSpeeds), metadata.maxSpeed),
+    maxSpeed: firstFinite(metadata.maxSpeed, maxFinite(recordSpeeds)),
     avgSpeed: firstFinite(averageSpeed(metadata.totalDistance, metadata.totalTimerTime), metadata.avgSpeed),
   };
 }

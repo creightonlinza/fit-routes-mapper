@@ -172,7 +172,33 @@ describe('FitParserService', () => {
     expect(result.routeData?.metadata?.avgHeartRate).toBe(145);
     expect(result.routeData?.metadata?.maxHeartRate).toBe(172);
     expect(result.routeData?.metadata?.avgSpeed).toBe(2);
-    expect(result.routeData?.metadata?.maxSpeed).toBe(5);
+    expect(result.routeData?.metadata?.maxSpeed).toBe(3.5);
+  });
+
+  it('should use record max speed only when session max speed is missing', async () => {
+    mockFitSdk(service, [
+      [
+        'session',
+        {
+          sport: Sport.Cycling,
+          totalTimerTime: 500,
+          totalDistance: 1000,
+        },
+      ],
+      [
+        'record',
+        {
+          positionLat: 45 * FIT_DEGREES_TO_SEMICIRCLES,
+          positionLong: -75 * FIT_DEGREES_TO_SEMICIRCLES,
+          enhancedSpeed: 6,
+        },
+      ],
+    ]);
+
+    const result = await service.parseFitFile(new File([new ArrayBuffer(1)], 'ride.fit'), [Sport.Cycling], buildRouteData());
+
+    expect(result.status).toBe('loaded');
+    expect(result.routeData?.metadata?.maxSpeed).toBe(6);
   });
 
   it('should return skipped-sport when the session sport is not selected', async () => {
