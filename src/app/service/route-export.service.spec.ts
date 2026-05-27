@@ -28,6 +28,8 @@ function buildRoute(overrides: Partial<ParsedRouteData> = {}): ParsedRouteData {
     fileName: 'activity.fit',
     fileSize: 123,
     lastModified: 456,
+    sourcePointCount: 2,
+    mappedPointCount: 2,
     visible: true,
     selected: false,
     hovered: false,
@@ -72,6 +74,8 @@ describe('RouteExportService', () => {
     expect(geoJson.type).toBe('FeatureCollection');
     expect(geoJson.features.length).toBe(1);
     expect(geoJson.features[0].properties.fileName).toBe('activity.fit');
+    expect(geoJson.features[0].properties.sourcePointCount).toBe(2);
+    expect(geoJson.features[0].properties.mappedPointCount).toBe(2);
     expect(geoJson.features[0].properties.pointCount).toBe(2);
     expect(geoJson.features[0].geometry.coordinates).toEqual([
       [-75, 45],
@@ -83,7 +87,7 @@ describe('RouteExportService', () => {
     const csv = service.buildCsv([buildRoute(), buildRoute({ id: 'hidden', visible: false })]);
 
     expect(csv).toContain('fileName,sport,startTime,elapsedTimeSeconds');
-    expect(csv).toContain('activity.fit,running,2025-01-01T12:00:00.000Z,3600,10000,500,5,3,2');
+    expect(csv).toContain('activity.fit,running,2025-01-01T12:00:00.000Z,3600,10000,500,5,3,2,2,2');
     expect(csv.split('\n').length).toBe(2);
   });
 
@@ -96,7 +100,7 @@ describe('RouteExportService', () => {
       }),
     ]);
 
-    expect(csv).toContain('"quoted, ""route"".fit",,,,,,,,0');
+    expect(csv).toContain('"quoted, ""route"".fit",,,,,,,,2,2,0');
   });
 
   it('should support MVCArray path exports', () => {
@@ -111,6 +115,27 @@ describe('RouteExportService', () => {
     );
 
     expect(geoJson.features[0].geometry.coordinates).toEqual([[2, 1]]);
+  });
+
+  it('should prefer export paths over current map detail paths', () => {
+    const geoJson = JSON.parse(
+      service.buildGeoJson([
+        buildRoute({
+          exportPath: [
+            { lat: 10, lng: 20 },
+            { lat: 11, lng: 21 },
+          ],
+          polylineOptions: {
+            path: [{ lat: 1, lng: 2 }],
+          },
+        }),
+      ])
+    );
+
+    expect(geoJson.features[0].geometry.coordinates).toEqual([
+      [20, 10],
+      [21, 11],
+    ]);
   });
 
   it('should export empty collections when no routes are visible', () => {

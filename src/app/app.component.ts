@@ -6,10 +6,16 @@ import { GoogleMap, GoogleMapsModule } from '@angular/google-maps';
 import { Loader } from '@googlemaps/js-api-loader';
 import { NgbModal, NgbModalRef } from '@ng-bootstrap/ng-bootstrap';
 
-import { FitParseResult, ParsedRouteData, RouteMetadata } from './model/parsed-route-data.model';
+import { ParsedRouteData, RouteMetadata, RoutePathDetail, RoutePathSet } from './model/parsed-route-data.model';
+import {
+  DEFAULT_ROUTE_IMPORT_BATCH_SIZE,
+  DEFAULT_SIMPLIFICATION_TOLERANCE_METERS,
+  ImportedRoutePayload,
+  RouteImportResult,
+} from './model/route-import.model';
 import { Sport } from './model/sport.model';
 import { UnitSystem } from './model/unit-system.model';
-import { FitParserService } from './service/fit-parser.service';
+import { RouteImportService } from './service/route-import.service';
 import { RouteExportService } from './service/route-export.service';
 import { EnvironmentConfig, environment } from '../environments/environment';
 
@@ -45,6 +51,8 @@ const SPORT_COLORS: Record<Sport, string> = {
 
 const DATE_COLOR_START = { r: 13, g: 110, b: 253 };
 const DATE_COLOR_END = { r: 220, g: 53, b: 69 };
+const OVERVIEW_PATH_MAX_ZOOM = 10;
+const STANDARD_PATH_MAX_ZOOM = 13;
 
 @Component({
   selector: 'app-root',
@@ -59,7 +67,7 @@ export class AppComponent implements AfterViewInit {
   @ViewChild('routeDetailModal') routeDetailModal!: TemplateRef<unknown>;
   @ViewChild(GoogleMap) map?: GoogleMap;
 
-  private fitParserService = inject(FitParserService);
+  private routeImportService = inject(RouteImportService);
   private routeExportService = inject(RouteExportService);
   private modalService = inject(NgbModal);
   private modalRef?: NgbModalRef;
@@ -70,9 +78,19 @@ export class AppComponent implements AfterViewInit {
   mapZoom = environment.defaultMapZoom;
   mapTypeId: MapTypeId = 'roadmap';
   mapOptions: google.maps.MapOptions = { mapTypeId: this.mapTypeId };
+  currentPathDetail: RoutePathDetail = this.pathDetailForZoom(this.mapZoom);
   sports = Object.values(Sport);
   inputFiles: File[] = [];
   parsedRouteData: ParsedRouteData[] = [];
+  visibleRouteData: ParsedRouteData[] = [];
+  renderedRouteData: ParsedRouteData[] = [];
+  pagedRouteData: ParsedRouteData[] = [];
+  visibleRouteCount = 0;
+  renderedRouteCount = 0;
+  routeListPage = 0;
+  routeListPageSize = 200;
+  routeListPageCount = 0;
+  totalDistanceText = 'N/A';
   routeMetadata: Partial<RouteMetadata> = {};
   routeDetailFileName = '';
   mapsApiLoaded = false;
@@ -167,17 +185,26 @@ export class AppComponent implements AfterViewInit {
     this.hasParsingSummary = false;
     const loadedRouteCount = this.parsedRouteData.length;
 
-    for (const [index, file] of fitFiles.entries()) {
-      this.fileIndex = index + 1;
-      const initialRouteData = this.createInitialRouteData(file);
-      const parseResult = await this.fitParserService.parseFitFile(file, selectedActivities, initialRouteData);
-
-      this.recordParseResult(parseResult);
-
-      if (parseResult.status === 'loaded' && parseResult.routeData) {
-        this.prepareLoadedRoute(parseResult.routeData);
-        this.parsedRouteData.push(parseResult.routeData);
-      }
+    try {
+      await this.routeImportService.importFiles(
+        {
+          files: fitFiles,
+          activities: selectedActivities,
+          simplificationToleranceMeters: DEFAULT_SIMPLIFICATION_TOLERANCE_METERS,
+          batchSize: DEFAULT_ROUTE_IMPORT_BATCH_SIZE,
+        },
+        {
+          onBatch: results => this.addImportResults(results),
+          onProgress: processed => {
+            this.fileIndex = processed;
+          },
+        }
+      );
+    } catch (error) {
+      this.parsingFiles = false;
+      this.hasParsingSummary = true;
+      this.errorMessage = this.errorMessageFrom(error);
+      return;
     }
 
     if (this.colorMode === 'date') {
@@ -185,6 +212,7 @@ export class AppComponent implements AfterViewInit {
     }
 
     this.refreshAllPolylineOptions();
+    this.rebuildRouteState();
     this.hasParsingSummary = true;
     this.parsingFiles = false;
     this.inputFiles = [];
@@ -201,7 +229,7 @@ export class AppComponent implements AfterViewInit {
   }
 
   setMapViewport(): void {
-    const bounds = this.buildRouteBounds(this.visibleRoutes());
+    const bounds = this.buildRouteBounds(this.renderedRouteData);
     if (!bounds) {
       return;
     }
@@ -222,6 +250,22 @@ export class AppComponent implements AfterViewInit {
     this.selectRoute(route, false);
     this.mapCenter = bounds.getCenter().toJSON();
     this.map?.googleMap?.fitBounds(bounds);
+  }
+
+  onMapZoomChanged(): void {
+    const zoom = this.map?.googleMap?.getZoom();
+    if (!this.isFiniteNumber(zoom)) {
+      return;
+    }
+
+    this.mapZoom = zoom;
+    const nextPathDetail = this.pathDetailForZoom(zoom);
+    if (nextPathDetail === this.currentPathDetail) {
+      return;
+    }
+
+    this.currentPathDetail = nextPathDetail;
+    this.applyRoutePathDetail();
   }
 
   parsedPercent(): number {
@@ -260,15 +304,15 @@ export class AppComponent implements AfterViewInit {
   }
 
   visibleRoutes(): ParsedRouteData[] {
-    return this.parsedRouteData.filter(route => route.visible);
+    return this.visibleRouteData;
   }
 
   hasVisibleRoutes(): boolean {
-    return this.visibleRoutes().length > 0;
+    return this.visibleRouteCount > 0;
   }
 
   totalDistanceLabel(): string {
-    return this.formatDistance(this.totalDistanceMeters());
+    return this.totalDistanceText;
   }
 
   routeDistanceLabel(route: ParsedRouteData): string {
@@ -284,7 +328,7 @@ export class AppComponent implements AfterViewInit {
   }
 
   routePointCount(route: ParsedRouteData): number {
-    return this.routePathPoints(route.polylineOptions.path).length;
+    return route.mappedPointCount;
   }
 
   parsingSummaryItems(): RouteDetailItem[] {
@@ -318,6 +362,7 @@ export class AppComponent implements AfterViewInit {
       this.routeDetailFileName = '';
     }
     this.updatePolylineOptions(route);
+    this.rebuildRouteState();
   }
 
   deleteRoute(route: ParsedRouteData): void {
@@ -327,10 +372,19 @@ export class AppComponent implements AfterViewInit {
       this.routeMetadata = {};
       this.routeDetailFileName = '';
     }
+    this.rebuildRouteState();
   }
 
   clearRoutes(): void {
     this.parsedRouteData = [];
+    this.visibleRouteData = [];
+    this.renderedRouteData = [];
+    this.pagedRouteData = [];
+    this.visibleRouteCount = 0;
+    this.renderedRouteCount = 0;
+    this.routeListPage = 0;
+    this.routeListPageCount = 0;
+    this.totalDistanceText = 'N/A';
     this.inputFiles = [];
     this.routeMetadata = {};
     this.routeDetailFileName = '';
@@ -353,6 +407,11 @@ export class AppComponent implements AfterViewInit {
 
   updateRouteStyles(): void {
     this.refreshAllPolylineOptions();
+    this.rebuildRouteState();
+  }
+
+  updateUnitSystem(): void {
+    this.rebuildRouteState();
   }
 
   exportGeoJson(): void {
@@ -372,18 +431,45 @@ export class AppComponent implements AfterViewInit {
   }
 
   selectRoute(route: ParsedRouteData, openModal: boolean): void {
+    const previouslySelectedRoute = this.parsedRouteData.find(routeData => routeData.id === this.selectedRouteId);
     this.selectedRouteId = route.id;
     this.routeMetadata = route.metadata ?? {};
     this.routeDetailFileName = route.fileName;
 
-    for (const routeData of this.parsedRouteData) {
-      routeData.selected = routeData.id === route.id;
-      this.updatePolylineOptions(routeData);
+    if (previouslySelectedRoute && previouslySelectedRoute.id !== route.id) {
+      previouslySelectedRoute.selected = false;
+      this.updatePolylineOptions(previouslySelectedRoute);
     }
+
+    route.selected = true;
+    this.updatePolylineOptions(route);
+    this.rebuildRouteState();
 
     if (openModal) {
       this.modalService.open(this.routeDetailModal, { centered: true });
     }
+  }
+
+  previousRouteListPage(): void {
+    if (this.routeListPage === 0) {
+      return;
+    }
+
+    this.routeListPage -= 1;
+    this.rebuildRoutePage();
+  }
+
+  nextRouteListPage(): void {
+    if (this.routeListPage >= this.routeListPageCount - 1) {
+      return;
+    }
+
+    this.routeListPage += 1;
+    this.rebuildRoutePage();
+  }
+
+  trackRouteById(index: number, route: ParsedRouteData): string {
+    return route.id;
   }
 
   private loadMap(): void {
@@ -432,24 +518,29 @@ export class AppComponent implements AfterViewInit {
     return this.sports.filter(sport => this.activities[sport]);
   }
 
-  private createInitialRouteData(file: File): ParsedRouteData {
+  private createRouteData(importedRoute: ImportedRoutePayload): ParsedRouteData {
     const baseStrokeColor = this.initialRouteColor();
 
     return {
       id: `route-${++this.routeId}`,
-      fileName: file.name,
-      fileSize: file.size,
-      lastModified: file.lastModified,
+      fileName: importedRoute.fileName,
+      fileSize: importedRoute.fileSize,
+      lastModified: importedRoute.lastModified,
+      sourcePointCount: importedRoute.sourcePointCount,
+      mappedPointCount: importedRoute.mappedPointCount,
       visible: true,
       selected: false,
       hovered: false,
       baseStrokeColor,
+      metadata: importedRoute.metadata,
+      pathSet: importedRoute.pathSet,
+      exportPath: importedRoute.pathSet.detail,
       polylineOptions: {
         strokeColor: baseStrokeColor,
         strokeOpacity: this.routeOpacity,
         strokeWeight: this.routeWidth,
         clickable: true,
-        path: [],
+        path: this.pathForDetail(importedRoute.pathSet),
       },
     };
   }
@@ -462,8 +553,22 @@ export class AppComponent implements AfterViewInit {
     this.updatePolylineOptions(route);
   }
 
-  private recordParseResult(parseResult: FitParseResult): void {
-    switch (parseResult.status) {
+  private addImportResults(results: RouteImportResult[]): void {
+    for (const result of results) {
+      this.recordImportResult(result);
+
+      if (result.status === 'loaded' && result.route) {
+        const routeData = this.createRouteData(result.route);
+        this.prepareLoadedRoute(routeData);
+        this.parsedRouteData.push(routeData);
+      }
+    }
+
+    this.rebuildRouteState();
+  }
+
+  private recordImportResult(importResult: RouteImportResult): void {
+    switch (importResult.status) {
       case 'loaded':
         this.parsingSummary.loaded += 1;
         break;
@@ -484,6 +589,57 @@ export class AppComponent implements AfterViewInit {
 
   private refreshAllPolylineOptions(): void {
     this.parsedRouteData.forEach(route => this.updatePolylineOptions(route));
+  }
+
+  private rebuildRouteState(): void {
+    this.visibleRouteData = this.parsedRouteData.filter(route => route.visible);
+    this.visibleRouteCount = this.visibleRouteData.length;
+    this.renderedRouteData = this.visibleRouteData;
+    this.renderedRouteCount = this.renderedRouteData.length;
+    this.totalDistanceText = this.formatDistance(this.totalDistanceMeters(this.visibleRouteData));
+    this.routeListPageCount = Math.ceil(this.parsedRouteData.length / this.routeListPageSize);
+
+    if (this.routeListPageCount === 0) {
+      this.routeListPage = 0;
+    } else if (this.routeListPage >= this.routeListPageCount) {
+      this.routeListPage = this.routeListPageCount - 1;
+    }
+
+    this.rebuildRoutePage();
+  }
+
+  private rebuildRoutePage(): void {
+    const startIndex = this.routeListPage * this.routeListPageSize;
+    this.pagedRouteData = this.parsedRouteData.slice(startIndex, startIndex + this.routeListPageSize);
+  }
+
+  private applyRoutePathDetail(): void {
+    for (const route of this.parsedRouteData) {
+      if (!route.pathSet) {
+        continue;
+      }
+
+      route.polylineOptions = {
+        ...route.polylineOptions,
+        path: this.pathForDetail(route.pathSet),
+      };
+    }
+  }
+
+  private pathForDetail(pathSet: RoutePathSet): google.maps.LatLngLiteral[] {
+    return pathSet[this.currentPathDetail];
+  }
+
+  private pathDetailForZoom(zoom: number): RoutePathDetail {
+    if (zoom <= OVERVIEW_PATH_MAX_ZOOM) {
+      return 'overview';
+    }
+
+    if (zoom <= STANDARD_PATH_MAX_ZOOM) {
+      return 'standard';
+    }
+
+    return 'detail';
   }
 
   private updatePolylineOptions(route: ParsedRouteData): void {
@@ -611,11 +767,11 @@ export class AppComponent implements AfterViewInit {
     return `${Math.round(calories)} kcal`;
   }
 
-  private totalDistanceMeters(): number | undefined {
+  private totalDistanceMeters(routes: ParsedRouteData[]): number | undefined {
     let totalDistance = 0;
     let hasDistance = false;
 
-    for (const routeData of this.visibleRoutes()) {
+    for (const routeData of routes) {
       const distance = routeData.metadata?.totalDistance;
 
       if (this.isFiniteNumber(distance)) {
@@ -699,5 +855,9 @@ export class AppComponent implements AfterViewInit {
     anchor.download = fileName;
     anchor.click();
     URL.revokeObjectURL(url);
+  }
+
+  private errorMessageFrom(error: unknown): string {
+    return error instanceof Error ? error.message : 'Unknown route import error.';
   }
 }

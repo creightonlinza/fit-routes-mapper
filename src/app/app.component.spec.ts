@@ -2,8 +2,9 @@ import { TestBed } from '@angular/core/testing';
 import { NgbModal } from '@ng-bootstrap/ng-bootstrap';
 import { AppComponent } from './app.component';
 import { RouteMetadata, ParsedRouteData } from './model/parsed-route-data.model';
+import { RouteImportResult } from './model/route-import.model';
 import { Sport } from './model/sport.model';
-import { FitParserService } from './service/fit-parser.service';
+import { RouteImportService } from './service/route-import.service';
 
 class FakeLatLng {
   constructor(
@@ -50,6 +51,8 @@ function buildRoute(overrides: Partial<ParsedRouteData> = {}): ParsedRouteData {
     fileName: 'activity.fit',
     fileSize: 100,
     lastModified: 1,
+    sourcePointCount: 2,
+    mappedPointCount: 2,
     visible: true,
     selected: false,
     hovered: false,
@@ -65,6 +68,39 @@ function buildRoute(overrides: Partial<ParsedRouteData> = {}): ParsedRouteData {
     },
     ...overrides,
   };
+}
+
+function loadedImportResult(fileName = 'activity.fit'): RouteImportResult {
+  return {
+    status: 'loaded',
+    fileName,
+    route: {
+      fileName,
+      fileSize: 100,
+      lastModified: 1,
+      metadata: { totalDistance: 1000 } as RouteMetadata,
+      path: [{ lat: 1, lng: 2 }],
+      pathSet: {
+        overview: [{ lat: 1, lng: 2 }],
+        standard: [{ lat: 1, lng: 2 }],
+        detail: [
+          { lat: 1, lng: 2 },
+          { lat: 2, lng: 3 },
+        ],
+      },
+      sourcePointCount: 10,
+      mappedPointCount: 1,
+    },
+  };
+}
+
+function spyImportFiles(results: RouteImportResult[]): jasmine.Spy {
+  const routeImportService = TestBed.inject(RouteImportService);
+
+  return spyOn(routeImportService, 'importFiles').and.callFake(async (options, handlers) => {
+    handlers.onBatch(results);
+    handlers.onProgress(options.files.length);
+  });
 }
 
 describe('AppComponent', () => {
@@ -91,8 +127,7 @@ describe('AppComponent', () => {
   it('should skip parsing when no activities are selected', async () => {
     const fixture = TestBed.createComponent(AppComponent);
     const app = fixture.componentInstance;
-    const fitParserService = TestBed.inject(FitParserService);
-    const parseFitFileSpy = spyOn(fitParserService, 'parseFitFile');
+    const importFilesSpy = spyOn(TestBed.inject(RouteImportService), 'importFiles');
 
     app.inputFiles = [new File([], 'activity.fit')];
     app.activities = Object.fromEntries(app.sports.map(sport => [sport, false]));
@@ -100,33 +135,30 @@ describe('AppComponent', () => {
     await app.loadFiles();
 
     expect(app.errorMessage).toBe('Select at least one activity type to load');
-    expect(parseFitFileSpy).not.toHaveBeenCalled();
+    expect(importFilesSpy).not.toHaveBeenCalled();
   });
 
   it('should parse .FIT files case-insensitively', async () => {
     const fixture = TestBed.createComponent(AppComponent);
     const app = fixture.componentInstance;
-    const fitParserService = TestBed.inject(FitParserService);
-    spyOn(fitParserService, 'parseFitFile').and.callFake(async (file, activities, routeData) => {
-      routeData.metadata = { totalDistance: 1000 } as RouteMetadata;
-      routeData.polylineOptions.path = [{ lat: 1, lng: 2 }];
-      return { status: 'loaded', fileName: file.name, routeData };
-    });
+    const importFilesSpy = spyImportFiles([loadedImportResult('UPPER.FIT')]);
 
     app.inputFiles = [new File([], 'UPPER.FIT')];
 
     await app.loadFiles();
 
-    expect(fitParserService.parseFitFile).toHaveBeenCalled();
+    expect(importFilesSpy).toHaveBeenCalled();
+    expect(importFilesSpy.calls.mostRecent().args[0].files[0].name).toBe('UPPER.FIT');
     expect(app.parsedRouteData.length).toBe(1);
     expect(app.parsedRouteData[0].fileName).toBe('UPPER.FIT');
+    expect(app.parsedRouteData[0].sourcePointCount).toBe(10);
+    expect(app.parsedRouteData[0].mappedPointCount).toBe(1);
   });
 
   it('should keep the input modal open when no matching routes are parsed', async () => {
     const fixture = TestBed.createComponent(AppComponent);
     const app = fixture.componentInstance;
-    const fitParserService = TestBed.inject(FitParserService);
-    spyOn(fitParserService, 'parseFitFile').and.resolveTo({ status: 'skipped-sport', fileName: 'activity.fit' });
+    spyImportFiles([{ status: 'skipped-sport', fileName: 'activity.fit' }]);
 
     app.inputFiles = [new File([], 'activity.fit')];
 
@@ -141,17 +173,11 @@ describe('AppComponent', () => {
   it('should summarize loaded, skipped, error, and non-FIT import outcomes', async () => {
     const fixture = TestBed.createComponent(AppComponent);
     const app = fixture.componentInstance;
-    const fitParserService = TestBed.inject(FitParserService);
-    spyOn(fitParserService, 'parseFitFile').and.callFake(async (file, activities, routeData) => {
-      if (file.name === 'loaded.fit') {
-        routeData.polylineOptions.path = [{ lat: 1, lng: 2 }];
-        return { status: 'loaded', fileName: file.name, routeData };
-      }
-      if (file.name === 'nogps.fit') {
-        return { status: 'no-gps', fileName: file.name };
-      }
-      return { status: 'decode-error', fileName: file.name, errorMessage: 'Bad FIT' };
-    });
+    spyImportFiles([
+      loadedImportResult('loaded.fit'),
+      { status: 'no-gps', fileName: 'nogps.fit' },
+      { status: 'decode-error', fileName: 'bad.fit', errorMessage: 'Bad FIT' },
+    ]);
 
     app.inputFiles = [
       new File([], 'loaded.fit'),
@@ -169,6 +195,20 @@ describe('AppComponent', () => {
     expect(app.hasParsingSummary).toBeTrue();
   });
 
+  it('should report route import worker failures', async () => {
+    const fixture = TestBed.createComponent(AppComponent);
+    const app = fixture.componentInstance;
+    spyOn(TestBed.inject(RouteImportService), 'importFiles').and.rejectWith(new Error('Worker unavailable'));
+
+    app.inputFiles = [new File([], 'activity.fit')];
+
+    await app.loadFiles();
+
+    expect(app.errorMessage).toBe('Worker unavailable');
+    expect(app.parsingFiles).toBeFalse();
+    expect(app.hasParsingSummary).toBeTrue();
+  });
+
   it('should generate six-digit random route colors', () => {
     const fixture = TestBed.createComponent(AppComponent);
     const app = fixture.componentInstance;
@@ -183,6 +223,7 @@ describe('AppComponent', () => {
     const defaultCenter = app.mapCenter;
 
     app.parsedRouteData = [buildRoute({ polylineOptions: { path: [] } })];
+    app['rebuildRouteState']();
 
     app.setMapViewport();
 
@@ -196,6 +237,7 @@ describe('AppComponent', () => {
     app.map = { googleMap: { fitBounds } } as unknown as AppComponent['map'];
 
     app.parsedRouteData = [buildRoute()];
+    app['rebuildRouteState']();
 
     app.setMapViewport();
 
@@ -221,11 +263,12 @@ describe('AppComponent', () => {
         polylineOptions: { path: [{ lat: 80, lng: 80 }] },
       }),
     ];
+    app['rebuildRouteState']();
 
     app.setMapViewport();
 
     expect(app.mapCenter).toEqual({ lat: 15, lng: 30 });
-    expect(app.totalDistanceLabel()).toBe('0.62 mi');
+    expect(app.totalDistanceText).toBe('0.62 mi');
   });
 
   it('should fit the map to route points from MVCArray paths', () => {
@@ -244,6 +287,7 @@ describe('AppComponent', () => {
         },
       }),
     ];
+    app['rebuildRouteState']();
 
     app.setMapViewport();
 
@@ -256,6 +300,7 @@ describe('AppComponent', () => {
     const app = fixture.componentInstance;
     const route = buildRoute({ metadata: { sport: Sport.Running } as RouteMetadata });
     app.parsedRouteData = [route];
+    app['rebuildRouteState']();
 
     app.selectRoute(route, false);
 
@@ -270,6 +315,7 @@ describe('AppComponent', () => {
     const app = fixture.componentInstance;
     const route = buildRoute();
     app.parsedRouteData = [route];
+    app['rebuildRouteState']();
 
     app.toggleRouteVisibility(route);
     expect(app.hasVisibleRoutes()).toBeFalse();
@@ -283,6 +329,7 @@ describe('AppComponent', () => {
     const app = fixture.componentInstance;
     const modalOpen = spyOn(TestBed.inject(NgbModal), 'open');
     app.parsedRouteData = [buildRoute()];
+    app['rebuildRouteState']();
     app.hasParsingSummary = true;
 
     app.clearRoutes();
@@ -341,9 +388,62 @@ describe('AppComponent', () => {
     const app = fixture.componentInstance;
 
     app.parsedRouteData = [buildRoute({ visible: false })];
+    app['rebuildRouteState']();
     expect(app.hasVisibleRoutes()).toBeFalse();
 
     app.parsedRouteData[0].visible = true;
+    app['rebuildRouteState']();
     expect(app.hasVisibleRoutes()).toBeTrue();
+  });
+
+  it('should render every visible route on the map', () => {
+    const fixture = TestBed.createComponent(AppComponent);
+    const app = fixture.componentInstance;
+
+    app.parsedRouteData = Array.from({ length: 501 }, (_, index) => buildRoute({ id: `route-${index + 1}` }));
+    app['rebuildRouteState']();
+
+    expect(app.parsedRouteData.length).toBe(501);
+    expect(app.visibleRouteCount).toBe(501);
+    expect(app.renderedRouteCount).toBe(501);
+    expect(app.renderedRouteData.length).toBe(501);
+  });
+
+  it('should keep drawer rows paged while rendering all visible map routes', () => {
+    const fixture = TestBed.createComponent(AppComponent);
+    const app = fixture.componentInstance;
+
+    app.parsedRouteData = Array.from({ length: 501 }, (_, index) => buildRoute({ id: `route-${index + 1}` }));
+    app['rebuildRouteState']();
+
+    expect(app.renderedRouteData.length).toBe(501);
+    expect(app.pagedRouteData.length).toBe(200);
+    expect(app.routeListPageCount).toBe(3);
+  });
+
+  it('should switch route paths based on map zoom level', () => {
+    const fixture = TestBed.createComponent(AppComponent);
+    const app = fixture.componentInstance;
+    const route = buildRoute({
+      pathSet: {
+        overview: [{ lat: 1, lng: 1 }],
+        standard: [
+          { lat: 1, lng: 1 },
+          { lat: 2, lng: 2 },
+        ],
+        detail: [
+          { lat: 1, lng: 1 },
+          { lat: 2, lng: 2 },
+          { lat: 3, lng: 3 },
+        ],
+      },
+    });
+    app.parsedRouteData = [route];
+    app.map = { googleMap: { getZoom: () => 14 } } as unknown as AppComponent['map'];
+    app.currentPathDetail = 'overview';
+
+    app.onMapZoomChanged();
+
+    expect(route.polylineOptions.path).toEqual(route.pathSet?.detail);
   });
 });

@@ -10,15 +10,23 @@ export interface RouteMetadata {
   avgSpeed: number;
 }
 
+export type RoutePathDetail = 'overview' | 'standard' | 'detail';
+
+export type RoutePathSet = Record<RoutePathDetail, google.maps.LatLngLiteral[]>;
+
 export interface ParsedRouteData {
   id: string;
   fileName: string;
   fileSize: number;
   lastModified: number;
+  sourcePointCount: number;
+  mappedPointCount: number;
   visible: boolean;
   selected: boolean;
   hovered: boolean;
   baseStrokeColor: string;
+  pathSet?: RoutePathSet;
+  exportPath?: google.maps.LatLngLiteral[];
   polylineOptions: google.maps.PolylineOptions;
   metadata?: RouteMetadata;
 }

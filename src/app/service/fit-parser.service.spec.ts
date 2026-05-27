@@ -30,6 +30,8 @@ function buildRouteData(): ParsedRouteData {
     fileName: 'activity.fit',
     fileSize: 1,
     lastModified: 1,
+    sourcePointCount: 0,
+    mappedPointCount: 0,
     visible: true,
     selected: false,
     hovered: false,
@@ -95,10 +97,10 @@ describe('FitParserService', () => {
   });
 
   it('should convert valid FIT semicircle coordinates to degrees with the exact scale', () => {
-    expect(service['toLatLng'](45 * FIT_DEGREES_TO_SEMICIRCLES, -75 * FIT_DEGREES_TO_SEMICIRCLES)).toEqual([
-      45,
-      -75,
-    ]);
+    expect(service['toLatLng'](45 * FIT_DEGREES_TO_SEMICIRCLES, -75 * FIT_DEGREES_TO_SEMICIRCLES)).toEqual({
+      lat: 45,
+      lng: -75,
+    });
   });
 
   it('should return loaded route data when the sport and coordinates match', async () => {
@@ -118,6 +120,8 @@ describe('FitParserService', () => {
     expect(result.status).toBe('loaded');
     expect(result.routeData?.metadata?.sport).toBe(Sport.Running);
     expect(result.routeData?.polylineOptions.path).toEqual([{ lat: 45, lng: -75 }]);
+    expect(result.routeData?.sourcePointCount).toBe(1);
+    expect(result.routeData?.mappedPointCount).toBe(1);
   });
 
   it('should return skipped-sport when the session sport is not selected', async () => {

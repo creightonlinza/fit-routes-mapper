@@ -36,6 +36,8 @@ export class RouteExportService {
       'calories',
       'maxSpeedMetersPerSecond',
       'averageSpeedMetersPerSecond',
+      'sourcePointCount',
+      'mappedPointCount',
       'pointCount',
     ];
 
@@ -48,6 +50,8 @@ export class RouteExportService {
       route.metadata?.totalCalories ?? '',
       route.metadata?.maxSpeed ?? '',
       route.metadata?.avgSpeed ?? '',
+      route.sourcePointCount,
+      route.mappedPointCount,
       this.pathPoints(route).length,
     ]);
 
@@ -69,6 +73,8 @@ export class RouteExportService {
         calories: route.metadata?.totalCalories ?? null,
         maxSpeedMetersPerSecond: route.metadata?.maxSpeed ?? null,
         averageSpeedMetersPerSecond: route.metadata?.avgSpeed ?? null,
+        sourcePointCount: route.sourcePointCount,
+        mappedPointCount: route.mappedPointCount,
         pointCount: this.pathPoints(route).length,
       },
       geometry: {
@@ -79,7 +85,7 @@ export class RouteExportService {
   }
 
   private pathPoints(route: ParsedRouteData): google.maps.LatLngLiteral[] {
-    const path = route.polylineOptions.path;
+    const path = route.exportPath ?? route.polylineOptions.path;
     if (!path) {
       return [];
     }

@@ -4,7 +4,7 @@
       <i class="bi bi-layout-sidebar-inset-reverse"></i>
     </button>
     <span class="h5 mb-0">.fit Routes Mapper</span>
-    <span *ngIf="hasLoadedRoutes()" class="small text-muted">Visible total: {{ totalDistanceLabel() }}</span>
+    <span *ngIf="hasLoadedRoutes()" class="small text-muted">Visible total: {{ totalDistanceText }}</span>
   </div>
   <div class="header-actions">
     <button type="button" class="btn btn-outline-primary btn-sm" (click)="openInputModal()">
@@ -32,8 +32,8 @@
 
 <main class="app-shell" [class.drawer-open]="drawerOpen">
   <section *ngIf="mapsApiLoaded" class="map-shell">
-    <google-map height="100%" width="100%" [zoom]="mapZoom" [center]="mapCenter" [options]="mapOptions">
-      <ng-container *ngFor="let routeData of visibleRoutes()">
+    <google-map height="100%" width="100%" [zoom]="mapZoom" [center]="mapCenter" [options]="mapOptions" (zoomChanged)="onMapZoomChanged()">
+      <ng-container *ngFor="let routeData of renderedRouteData; trackBy: trackRouteById">
         <map-polyline
           [options]="routeData.polylineOptions"
           (polylineClick)="onPolylineClick($event, routeData)"
@@ -47,7 +47,7 @@
     <div class="drawer-section">
       <div class="drawer-heading">
         <h2>Routes</h2>
-        <span class="text-muted small">{{ visibleRoutes().length }} visible / {{ parsedRouteData.length }} loaded</span>
+        <span class="text-muted small">{{ visibleRouteCount }} visible / {{ parsedRouteData.length }} loaded</span>
       </div>
 
       <div class="control-grid">
@@ -96,7 +96,7 @@
       </div>
 
       <article
-        *ngFor="let route of parsedRouteData"
+        *ngFor="let route of pagedRouteData; trackBy: trackRouteById"
         class="route-row"
         [class.selected]="route.selected"
         [class.muted]="!route.visible">
@@ -109,7 +109,9 @@
               <span>{{ routeDistanceLabel(route) }}</span>
               <span>{{ routeDurationLabel(route) }}</span>
             </div>
-            <div class="route-date text-muted">{{ routeStartLabel(route) }} · {{ routePointCount(route) }} pts</div>
+            <div class="route-date text-muted">
+              {{ routeStartLabel(route) }} · {{ route.mappedPointCount }} mapped / {{ route.sourcePointCount }} source pts
+            </div>
           </div>
         </div>
         <div class="route-actions">
@@ -148,6 +150,28 @@
           </button>
         </div>
       </article>
+
+      <div *ngIf="routeListPageCount > 1" class="route-pager">
+        <button
+          type="button"
+          class="btn btn-outline-secondary btn-sm icon-btn"
+          aria-label="Previous route page"
+          title="Previous route page"
+          (click)="previousRouteListPage()"
+          [disabled]="routeListPage === 0">
+          <i class="bi bi-chevron-left"></i>
+        </button>
+        <span class="text-muted small">Page {{ routeListPage + 1 }} of {{ routeListPageCount }}</span>
+        <button
+          type="button"
+          class="btn btn-outline-secondary btn-sm icon-btn"
+          aria-label="Next route page"
+          title="Next route page"
+          (click)="nextRouteListPage()"
+          [disabled]="routeListPage >= routeListPageCount - 1">
+          <i class="bi bi-chevron-right"></i>
+        </button>
+      </div>
     </div>
   </aside>
 </main>
@@ -196,6 +220,7 @@
           id="unitSystemImperial"
           value="imperial"
           [(ngModel)]="unitSystem"
+          (ngModelChange)="updateUnitSystem()"
           autocomplete="off" />
         <label class="btn btn-outline-secondary" for="unitSystemImperial">Imperial</label>
 
@@ -206,6 +231,7 @@
           id="unitSystemMetric"
           value="metric"
           [(ngModel)]="unitSystem"
+          (ngModelChange)="updateUnitSystem()"
           autocomplete="off" />
         <label class="btn btn-outline-secondary" for="unitSystemMetric">Metric</label>
       </div>

@@ -1,7 +1,9 @@
 import { Injectable } from '@angular/core';
-import { FitParseResult, ParsedRouteData } from '../model/parsed-route-data.model';
+import { FitParseResult, ParsedRouteData, RoutePathSet } from '../model/parsed-route-data.model';
 import { RecordMessage } from '../model/record-message.model';
+import { DEFAULT_SIMPLIFICATION_TOLERANCE_METERS } from '../model/route-import.model';
 import { Sport } from '../model/sport.model';
+import { simplifyPath } from './route-simplifier';
 
 const FIT_SEMICIRCLES_SCALE = 180 / 2 ** 31;
 
@@ -10,7 +12,8 @@ export class FitParserService {
   async parseFitFile(
     file: File,
     activities: Sport[],
-    routeData: ParsedRouteData
+    routeData: ParsedRouteData,
+    simplificationToleranceMeters = DEFAULT_SIMPLIFICATION_TOLERANCE_METERS
   ): Promise<FitParseResult> {
     let buffer: ArrayBuffer;
 
@@ -28,7 +31,7 @@ export class FitParserService {
       const { Decoder, Stream, Profile } = await this.loadFitSdk();
       const streamFromFileSync = Stream.fromArrayBuffer(buffer);
       const decoder = new Decoder(streamFromFileSync);
-      const coords: [number, number][] = [];
+      const coords: google.maps.LatLngLiteral[] = [];
       let includeActivity: boolean | undefined = undefined;
 
       const onMesg = (messageNumber: string | number, message: RecordMessage) => {
@@ -67,7 +70,13 @@ export class FitParserService {
         return { status: 'no-gps', fileName: file.name };
       }
 
-      routeData.polylineOptions.path = coords.map(([lat, lng]) => ({ lat, lng }));
+      const pathSet = this.buildPathSet(coords, simplificationToleranceMeters);
+      const simplifiedCoords = pathSet.standard;
+      routeData.sourcePointCount = coords.length;
+      routeData.mappedPointCount = simplifiedCoords.length;
+      routeData.pathSet = pathSet;
+      routeData.exportPath = pathSet.detail;
+      routeData.polylineOptions.path = simplifiedCoords;
 
       return { status: 'loaded', fileName: file.name, routeData };
     } catch (error) {
@@ -104,7 +113,15 @@ export class FitParserService {
     return import('@garmin/fitsdk');
   }
 
-  private toLatLng(positionLat: number | null | undefined, positionLong: number | null | undefined): [number, number] | undefined {
+  private buildPathSet(coords: google.maps.LatLngLiteral[], simplificationToleranceMeters: number): RoutePathSet {
+    return {
+      overview: simplifyPath(coords, simplificationToleranceMeters * 4),
+      standard: simplifyPath(coords, simplificationToleranceMeters),
+      detail: simplifyPath(coords, Math.max(1, simplificationToleranceMeters / 3)),
+    };
+  }
+
+  private toLatLng(positionLat: number | null | undefined, positionLong: number | null | undefined): google.maps.LatLngLiteral | undefined {
     if (!this.isFiniteNumber(positionLat) || !this.isFiniteNumber(positionLong)) {
       return;
     }
@@ -116,7 +133,7 @@ export class FitParserService {
       return;
     }
 
-    return [lat, lng];
+    return { lat, lng };
   }
 
   private isFiniteNumber(value: number | null | undefined): value is number {
