@@ -1,7 +1,7 @@
 import { CommonModule } from '@angular/common';
 import { AfterViewInit, Component, ElementRef, inject, TemplateRef, ViewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { GoogleMapsModule } from '@angular/google-maps';
+import { GoogleMap, GoogleMapsModule } from '@angular/google-maps';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 
 import { Loader } from '@googlemaps/js-api-loader';
@@ -23,6 +23,7 @@ export class AppComponent implements AfterViewInit {
   @ViewChild('fileInput') fileInput!: ElementRef<HTMLInputElement>;
   @ViewChild('inputModal') inputModal!: TemplateRef<unknown>;
   @ViewChild('routeDetailModal') routeDetailModal!: TemplateRef<unknown>;
+  @ViewChild(GoogleMap) map?: GoogleMap;
 
   private fitParserService = inject(FitParserService);
   private modalService = inject(NgbModal);
@@ -126,20 +127,21 @@ export class AppComponent implements AfterViewInit {
       }
     }
 
-    setTimeout(() => {
-      this.setMapCenter();
-      this.parsingFiles = false;
-      this.modalRef?.close();
-    }, 2000);
+    this.setMapViewport();
+    this.parsingFiles = false;
+    this.modalRef?.close();
   }
 
-  setMapCenter(): void {
-    // Set the map center to the first point of the first route
-    const path = this.parsedRouteData[0]?.polylineOptions.path;
-    if (path instanceof google.maps.MVCArray) {
-      this.mapCenter = path.getAt(0).toJSON() as google.maps.LatLngLiteral;
-    } else if (Array.isArray(path)) {
-      this.mapCenter = path[0] as google.maps.LatLngLiteral;
+  setMapViewport(): void {
+    const bounds = this.buildRouteBounds();
+    if (!bounds) {
+      return;
+    }
+
+    this.mapCenter = bounds.getCenter().toJSON();
+
+    if (this.map?.googleMap) {
+      this.map.googleMap.fitBounds(bounds);
     }
   }
 
@@ -202,6 +204,44 @@ export class AppComponent implements AfterViewInit {
 
   private selectedActivities(): Sport[] {
     return this.sports.filter(sport => this.activities[sport]);
+  }
+
+  private buildRouteBounds(): google.maps.LatLngBounds | undefined {
+    const bounds = new google.maps.LatLngBounds();
+    let hasPoints = false;
+
+    for (const routeData of this.parsedRouteData) {
+      for (const point of this.routePathPoints(routeData.polylineOptions.path)) {
+        bounds.extend(point);
+        hasPoints = true;
+      }
+    }
+
+    return hasPoints ? bounds : undefined;
+  }
+
+  private routePathPoints(path: google.maps.PolylineOptions['path']): google.maps.LatLngLiteral[] {
+    if (!path) {
+      return [];
+    }
+
+    const points = path instanceof google.maps.MVCArray ? path.getArray() : path;
+
+    return points.map(point => this.toLatLngLiteral(point)).filter(point => point !== undefined);
+  }
+
+  private toLatLngLiteral(
+    point: google.maps.LatLng | google.maps.LatLngLiteral
+  ): google.maps.LatLngLiteral | undefined {
+    if (point instanceof google.maps.LatLng) {
+      return point.toJSON();
+    }
+
+    if (typeof point.lat === 'number' && typeof point.lng === 'number') {
+      return point;
+    }
+
+    return;
   }
 
   private generateRandomColor(): string {
