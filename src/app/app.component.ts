@@ -176,6 +176,14 @@ export class AppComponent implements AfterViewInit {
     ];
   }
 
+  hasLoadedRoutes(): boolean {
+    return this.parsedRouteData.length > 0;
+  }
+
+  totalDistanceLabel(): string {
+    return this.formatDistance(this.totalDistanceMeters());
+  }
+
   reset(): void {
     window.location.reload();
   }
@@ -287,6 +295,22 @@ export class AppComponent implements AfterViewInit {
     }
 
     return `${Math.round(calories)} kcal`;
+  }
+
+  private totalDistanceMeters(): number | undefined {
+    let totalDistance = 0;
+    let hasDistance = false;
+
+    for (const routeData of this.parsedRouteData) {
+      const distance = routeData.metadata?.totalDistance;
+
+      if (this.isFiniteNumber(distance)) {
+        totalDistance += distance;
+        hasDistance = true;
+      }
+    }
+
+    return hasDistance ? totalDistance : undefined;
   }
 
   private isFiniteNumber(value: number | undefined): value is number {

@@ -2,6 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { AppComponent } from './app.component';
 import { FitParserService } from './service/fit-parser.service';
 import { Sport } from './model/sport.model';
+import { RouteMetadata } from './model/parsed-route-data.model';
 
 class FakeLatLng {
   constructor(
@@ -176,5 +177,40 @@ describe('AppComponent', () => {
     expect(details['Max Speed']).toBe('14.4 km/h');
     expect(details['Average Speed']).toBe('7.2 km/h');
     expect(details['Sport']).toBe('N/A');
+  });
+
+  it('should total loaded route distances in imperial units by default', () => {
+    const fixture = TestBed.createComponent(AppComponent);
+    const app = fixture.componentInstance;
+
+    app.parsedRouteData = [
+      { polylineOptions: {}, metadata: { totalDistance: 1609.344 } as RouteMetadata },
+      { polylineOptions: {}, metadata: { totalDistance: 804.672 } as RouteMetadata },
+    ];
+
+    expect(app.hasLoadedRoutes()).toBeTrue();
+    expect(app.totalDistanceLabel()).toBe('1.50 mi');
+  });
+
+  it('should total loaded route distances in metric units', () => {
+    const fixture = TestBed.createComponent(AppComponent);
+    const app = fixture.componentInstance;
+    app.unitSystem = 'metric';
+
+    app.parsedRouteData = [
+      { polylineOptions: {}, metadata: { totalDistance: 1000 } as RouteMetadata },
+      { polylineOptions: {}, metadata: { totalDistance: 1500 } as RouteMetadata },
+    ];
+
+    expect(app.totalDistanceLabel()).toBe('2.50 km');
+  });
+
+  it('should show no total distance when loaded routes have no distance metadata', () => {
+    const fixture = TestBed.createComponent(AppComponent);
+    const app = fixture.componentInstance;
+
+    app.parsedRouteData = [{ polylineOptions: {} }];
+
+    expect(app.totalDistanceLabel()).toBe('N/A');
   });
 });
