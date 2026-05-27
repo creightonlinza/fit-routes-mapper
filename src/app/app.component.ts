@@ -10,7 +10,7 @@ import { NgbModal, NgbModalRef } from '@ng-bootstrap/ng-bootstrap';
 import { FitParserService } from './service/fit-parser.service';
 import { ParsedRouteData, RouteMetadata } from './model/parsed-route-data.model';
 import { Sport } from './model/sport.model';
-import { environment } from '../environments/environment';
+import { EnvironmentConfig, environment } from '../environments/environment';
 
 @Component({
   selector: 'app-root',
@@ -21,12 +21,13 @@ import { environment } from '../environments/environment';
 })
 export class AppComponent implements AfterViewInit {
   @ViewChild('fileInput') fileInput!: ElementRef<HTMLInputElement>;
-  @ViewChild('inputModal') inputModal!: TemplateRef<any>;
-  @ViewChild('routeDetailModal') routeDetailModal!: TemplateRef<any>;
+  @ViewChild('inputModal') inputModal!: TemplateRef<unknown>;
+  @ViewChild('routeDetailModal') routeDetailModal!: TemplateRef<unknown>;
 
   private fitParserService = inject(FitParserService);
   private modalService = inject(NgbModal);
   private modalRef?: NgbModalRef;
+  private appConfig: EnvironmentConfig = environment;
 
   mapCenter = environment.defaultMapCenter;
   mapZoom = environment.defaultMapZoom;
@@ -41,7 +42,7 @@ export class AppComponent implements AfterViewInit {
   fileCount = 0;
 
   // default input options
-  activities: { [key: string]: boolean } = {
+  activities: Record<string, boolean> = {
     cycling: true,
     hiking: false,
     kayaking: false,
@@ -50,7 +51,10 @@ export class AppComponent implements AfterViewInit {
   };
   randomizeRouteColor = false;
 
-  ngAfterViewInit(): void {
+  async ngAfterViewInit(): Promise<void> {
+    this.appConfig = await this.loadAppConfig();
+    this.mapCenter = this.appConfig.defaultMapCenter;
+    this.mapZoom = this.appConfig.defaultMapZoom;
     this.loadMap();
     this.modalRef = this.modalService.open(this.inputModal, { centered: true, beforeDismiss: () => false });
   }
@@ -95,9 +99,9 @@ export class AppComponent implements AfterViewInit {
       this.fileIndex = index + 1;
       const initialRouteData: ParsedRouteData = {
         polylineOptions: {
-          strokeColor: this.randomizeRouteColor ? this.generateRandomColor() : environment.defaultStrokeColor,
-          strokeOpacity: environment.defaultStrokeOpacity,
-          strokeWeight: environment.defaultStrokeWeight,
+          strokeColor: this.randomizeRouteColor ? this.generateRandomColor() : this.appConfig.defaultStrokeColor,
+          strokeOpacity: this.appConfig.defaultStrokeOpacity,
+          strokeWeight: this.appConfig.defaultStrokeWeight,
           clickable: true,
           path: [],
         },
@@ -147,8 +151,13 @@ export class AppComponent implements AfterViewInit {
   }
 
   private loadMap(): void {
+    if (!this.appConfig.googleMapsApiKey) {
+      this.errorMessage = 'Google Maps API key is not configured. Copy public/app-config.example.json to public/app-config.json and add your key.';
+      return;
+    }
+
     new Loader({
-      apiKey: environment.googleMapsApiKey,
+      apiKey: this.appConfig.googleMapsApiKey,
       version: 'weekly',
     })
       .importLibrary('maps')
@@ -159,6 +168,28 @@ export class AppComponent implements AfterViewInit {
         this.errorMessage = 'Error loading Google Maps API';
         console.error('Error loading Google Maps API:', e);
       });
+  }
+
+  private async loadAppConfig(): Promise<EnvironmentConfig> {
+    try {
+      const response = await fetch('app-config.json', { cache: 'no-store' });
+      if (!response.ok) {
+        return environment;
+      }
+
+      const localConfig = (await response.json()) as Partial<EnvironmentConfig>;
+
+      return {
+        ...environment,
+        ...localConfig,
+        defaultMapCenter: {
+          ...environment.defaultMapCenter,
+          ...(localConfig.defaultMapCenter ?? {}),
+        },
+      };
+    } catch {
+      return environment;
+    }
   }
 
   private selectedActivities(): Sport[] {

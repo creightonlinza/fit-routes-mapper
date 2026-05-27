@@ -1,14 +1,14 @@
 import { Sport } from './sport.model';
 
 export interface RecordMessage {
-  startTime?: any;
-  totalTimerTime?: any;
-  totalDistance?: any;
-  totalCalories?: any;
-  maxSpeed?: any;
-  avgSpeed?: any;
+  startTime: Date;
+  totalTimerTime: number;
+  totalDistance: number;
+  totalCalories: number;
+  maxSpeed: number;
+  avgSpeed: number;
   sport: Sport;
-  timestamp: Object;
+  timestamp: object;
   positionLat: number;
   positionLong: number;
 }

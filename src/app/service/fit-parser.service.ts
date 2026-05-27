@@ -15,7 +15,7 @@ export class FitParserService {
       const buffer = await this.readFileAsArrayBuffer(file);
       const streamFromFileSync = Stream.fromArrayBuffer(buffer);
       const decoder = new Decoder(streamFromFileSync);
-      const coords = new Map<Object, [number, number]>();
+      const coords = new Map<object, [number, number]>();
       let includeActivity: boolean | undefined = undefined;
 
       const onMesg = (messageNumber: string | number, message: RecordMessage) => {

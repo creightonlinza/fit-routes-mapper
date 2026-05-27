@@ -42,5 +42,5 @@ testem.log
 Thumbs.db
 node_modules
 
-# Local env files
-src/environments/environment.ts
+# Local runtime config
+public/app-config.json

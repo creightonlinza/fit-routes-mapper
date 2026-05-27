@@ -35,9 +35,12 @@ The **Fit Routes Mapper** is an Angular standalone application designed to parse
    npm install
    ```
 
-3. Add your Google Maps API key to up the environment variables:
-   - `environment.ts` file in the environments folder.
-   - Default map settings can be customized there as well.
+3. Create a local runtime config and add your Google Maps API key:
+   ```bash
+   cp public/app-config.example.json public/app-config.json
+   ```
+
+   Update `public/app-config.json` with your key. This file is ignored by Git. The tracked `src/environments/environment.ts` file contains source-safe defaults only.
 
 4. Run the application:
    ```bash

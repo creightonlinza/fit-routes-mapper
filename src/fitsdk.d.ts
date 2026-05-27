@@ -1,7 +1,12 @@
 declare module '@garmin/fitsdk' {
   export class Decoder {
     constructor(stream: Stream);
-    read(options: { mesgListener: (messageNumber: string | number, message: any) => void }): void;
+    read(options: {
+      mesgListener: (
+        messageNumber: string | number,
+        message: import('./app/model/record-message.model').RecordMessage
+      ) => void;
+    }): void;
   }
 
   export class Stream {
@@ -10,7 +15,7 @@ declare module '@garmin/fitsdk' {
 
   export const Profile: {
     types: {
-      mesgNum: { [key: string]: string };
+      mesgNum: Record<string, string>;
     };
   };
 }
