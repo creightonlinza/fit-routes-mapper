@@ -11,10 +11,11 @@ The **Fit Routes Mapper** is an Angular standalone application designed to parse
 - **Route Color Modes**: Choose default, randomized, sport-based, or date-gradient route colors.
 - **Progress Tracking**: Displays a progress bar while parsing files.
 - **Import Summary**: Shows how many files loaded, were skipped, had no GPS data, failed decoding, failed reading, or were not `.fit` files.
-- **Route Drawer**: Manage loaded routes with visibility, zoom, details, and delete controls.
-- **Map Controls**: Switch map type and adjust global route width and opacity.
-- **Visible Route Exports**: Export visible routes as GeoJSON or CSV.
-- **Route Details Modal**: View detailed metadata for each route by clicking on the route polyline.
+- **Route Drawer**: View loaded route count, import summary, and global route width/opacity controls.
+- **Google Map Controls**: Use Google Maps' built-in controls for map type, zooming, and map interaction.
+- **Loaded Route Exports**: Export loaded routes as GeoJSON or CSV.
+- **Route Details Modal**: View detailed route metadata and delete the selected route by clicking a route polyline.
+- **Adaptive Route Rendering**: Uses simplified route paths at lower zoom levels and more detailed paths as users zoom in.
 - **Error Handling**: Displays error messages for invalid or unsupported files.
 - **Clear Functionality**: Clear loaded routes without reloading the Google Maps runtime.
 
@@ -22,8 +23,8 @@ The **Fit Routes Mapper** is an Angular standalone application designed to parse
 
 - **Angular**: Standalone component architecture.
 - **Google Maps JavaScript API**: For map rendering and route visualization.
-- **Angular Material**: Progress bar for file parsing progress.
-- **Bootstrap Modals**: For displaying input and route detail modals.
+- **Web Workers**: For off-main-thread route import processing.
+- **Bootstrap/NgBootstrap**: For layout, progress display, buttons, and modals.
 - **TypeScript**: Strongly typed language for better maintainability.
 
 ## Setup and Installation
@@ -63,15 +64,17 @@ The **Fit Routes Mapper** is an Angular standalone application designed to parse
 
 3. **Interact with Routes**:
    - Click on a route polyline to view detailed metadata in a modal.
-   - Use the route drawer to hide, zoom to, inspect, or delete individual routes.
+   - Delete the selected route from the route details modal if needed.
+   - Use the Fit routes button to zoom the map to all loaded routes.
 
 4. **Customize Options**:
    - Toggle activity types (e.g., cycling, running) to filter the parsed data.
    - Choose units and route color mode before loading files.
-   - Adjust map type, route width, and route opacity after loading.
+   - Adjust route width and route opacity from the drawer after loading.
+   - Use Google Maps' built-in controls to switch map type.
 
-5. **Export Visible Routes**:
-   - Use the GeoJSON or CSV buttons to export only the routes currently visible on the map.
+5. **Export Loaded Routes**:
+   - Use the GeoJSON or CSV buttons to export all loaded routes.
 
 6. **Clear the App**:
    - Click the clear button to remove loaded routes and start a new import.
