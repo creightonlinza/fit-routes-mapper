@@ -1,6 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { AppComponent } from './app.component';
 import { FitParserService } from './service/fit-parser.service';
+import { Sport } from './model/sport.model';
 
 class FakeLatLng {
   constructor(
@@ -133,5 +134,47 @@ describe('AppComponent', () => {
 
     expect(app.mapCenter).toEqual({ lat: 35, lng: -90 });
     expect(fitBounds).toHaveBeenCalled();
+  });
+
+  it('should format route details in imperial units by default', () => {
+    const fixture = TestBed.createComponent(AppComponent);
+    const app = fixture.componentInstance;
+    const details = Object.fromEntries(
+      app.routeDetailItems({
+        sport: Sport.Running,
+        startTime: new Date('2025-01-01T12:00:00Z'),
+        totalTimerTime: 3661,
+        totalDistance: 1609.344,
+        totalCalories: 425.4,
+        maxSpeed: 4,
+        avgSpeed: 2,
+      }).map(item => [item.label, item.value])
+    );
+
+    expect(details['Sport']).toBe('Running');
+    expect(details['Elapsed Time']).toBe('1h 01m 01s');
+    expect(details['Distance']).toBe('1.00 mi');
+    expect(details['Calories']).toBe('425 kcal');
+    expect(details['Max Speed']).toBe('8.9 mph');
+    expect(details['Average Speed']).toBe('4.5 mph');
+  });
+
+  it('should format route details in metric units', () => {
+    const fixture = TestBed.createComponent(AppComponent);
+    const app = fixture.componentInstance;
+    app.unitSystem = 'metric';
+
+    const details = Object.fromEntries(
+      app.routeDetailItems({
+        totalDistance: 1609.344,
+        maxSpeed: 4,
+        avgSpeed: 2,
+      }).map(item => [item.label, item.value])
+    );
+
+    expect(details['Distance']).toBe('1.61 km');
+    expect(details['Max Speed']).toBe('14.4 km/h');
+    expect(details['Average Speed']).toBe('7.2 km/h');
+    expect(details['Sport']).toBe('N/A');
   });
 });

@@ -10,7 +10,13 @@ import { NgbModal, NgbModalRef } from '@ng-bootstrap/ng-bootstrap';
 import { FitParserService } from './service/fit-parser.service';
 import { ParsedRouteData, RouteMetadata } from './model/parsed-route-data.model';
 import { Sport } from './model/sport.model';
+import { UnitSystem } from './model/unit-system.model';
 import { EnvironmentConfig, environment } from '../environments/environment';
+
+interface RouteDetailItem {
+  label: string;
+  value: string;
+}
 
 @Component({
   selector: 'app-root',
@@ -35,12 +41,13 @@ export class AppComponent implements AfterViewInit {
   sports = Object.values(Sport);
   inputFiles: File[] = [];
   parsedRouteData: ParsedRouteData[] = [];
-  routeMetadata: RouteMetadata = {} as RouteMetadata;
+  routeMetadata: Partial<RouteMetadata> = {};
   mapsApiLoaded = false;
   parsingFiles = false;
   errorMessage = '';
   fileIndex = 0;
   fileCount = 0;
+  unitSystem: UnitSystem = environment.defaultUnitSystem;
 
   // default input options
   activities: Record<string, boolean> = {
@@ -56,6 +63,7 @@ export class AppComponent implements AfterViewInit {
     this.appConfig = await this.loadAppConfig();
     this.mapCenter = this.appConfig.defaultMapCenter;
     this.mapZoom = this.appConfig.defaultMapZoom;
+    this.unitSystem = this.appConfig.defaultUnitSystem;
     this.loadMap();
     this.modalRef = this.modalService.open(this.inputModal, { centered: true, beforeDismiss: () => false });
   }
@@ -156,6 +164,18 @@ export class AppComponent implements AfterViewInit {
     }
   }
 
+  routeDetailItems(routeMetadata: Partial<RouteMetadata> = this.routeMetadata): RouteDetailItem[] {
+    return [
+      { label: 'Sport', value: this.formatSport(routeMetadata.sport) },
+      { label: 'Start Time', value: this.formatDate(routeMetadata.startTime) },
+      { label: 'Elapsed Time', value: this.formatDuration(routeMetadata.totalTimerTime) },
+      { label: 'Distance', value: this.formatDistance(routeMetadata.totalDistance) },
+      { label: 'Calories', value: this.formatCalories(routeMetadata.totalCalories) },
+      { label: 'Max Speed', value: this.formatSpeed(routeMetadata.maxSpeed) },
+      { label: 'Average Speed', value: this.formatSpeed(routeMetadata.avgSpeed) },
+    ];
+  }
+
   reset(): void {
     window.location.reload();
   }
@@ -204,6 +224,73 @@ export class AppComponent implements AfterViewInit {
 
   private selectedActivities(): Sport[] {
     return this.sports.filter(sport => this.activities[sport]);
+  }
+
+  private formatSport(sport: Sport | undefined): string {
+    return sport ? sport.charAt(0).toUpperCase() + sport.slice(1) : 'N/A';
+  }
+
+  private formatDate(date: Date | undefined): string {
+    if (!date) {
+      return 'N/A';
+    }
+
+    return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(date));
+  }
+
+  private formatDuration(seconds: number | undefined): string {
+    if (!this.isFiniteNumber(seconds)) {
+      return 'N/A';
+    }
+
+    const roundedSeconds = Math.round(seconds);
+    const hours = Math.floor(roundedSeconds / 3600);
+    const minutes = Math.floor((roundedSeconds % 3600) / 60);
+    const remainingSeconds = roundedSeconds % 60;
+
+    if (hours > 0) {
+      return `${hours}h ${minutes.toString().padStart(2, '0')}m ${remainingSeconds
+        .toString()
+        .padStart(2, '0')}s`;
+    }
+
+    return `${minutes}m ${remainingSeconds.toString().padStart(2, '0')}s`;
+  }
+
+  private formatDistance(meters: number | undefined): string {
+    if (!this.isFiniteNumber(meters)) {
+      return 'N/A';
+    }
+
+    if (this.unitSystem === 'metric') {
+      return `${(meters / 1000).toFixed(2)} km`;
+    }
+
+    return `${(meters / 1609.344).toFixed(2)} mi`;
+  }
+
+  private formatSpeed(metersPerSecond: number | undefined): string {
+    if (!this.isFiniteNumber(metersPerSecond)) {
+      return 'N/A';
+    }
+
+    if (this.unitSystem === 'metric') {
+      return `${(metersPerSecond * 3.6).toFixed(1)} km/h`;
+    }
+
+    return `${(metersPerSecond * 2.2369362921).toFixed(1)} mph`;
+  }
+
+  private formatCalories(calories: number | undefined): string {
+    if (!this.isFiniteNumber(calories)) {
+      return 'N/A';
+    }
+
+    return `${Math.round(calories)} kcal`;
+  }
+
+  private isFiniteNumber(value: number | undefined): value is number {
+    return typeof value === 'number' && Number.isFinite(value);
   }
 
   private buildRouteBounds(): google.maps.LatLngBounds | undefined {

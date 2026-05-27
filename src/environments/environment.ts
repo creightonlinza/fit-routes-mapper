@@ -1,3 +1,5 @@
+import { UnitSystem } from '../app/model/unit-system.model';
+
 export interface EnvironmentConfig {
   googleMapsApiKey: string;
   defaultMapCenter: google.maps.LatLngLiteral;
@@ -5,6 +7,7 @@ export interface EnvironmentConfig {
   defaultStrokeColor: string;
   defaultStrokeOpacity: number;
   defaultStrokeWeight: number;
+  defaultUnitSystem: UnitSystem;
 }
 
 export const environment: EnvironmentConfig = {
@@ -14,4 +17,5 @@ export const environment: EnvironmentConfig = {
   defaultStrokeColor: '#000000',
   defaultStrokeOpacity: 0.8,
   defaultStrokeWeight: 5,
+  defaultUnitSystem: 'imperial',
 };
