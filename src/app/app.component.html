@@ -32,7 +32,14 @@
 
 <main class="app-shell" [class.drawer-open]="drawerOpen">
   <section *ngIf="mapsApiLoaded" class="map-shell">
-    <google-map height="100%" width="100%" [zoom]="mapZoom" [center]="mapCenter" [options]="mapOptions" (zoomChanged)="onMapZoomChanged()">
+    <google-map
+      height="100%"
+      width="100%"
+      [zoom]="mapZoom"
+      [center]="mapCenter"
+      [options]="mapOptions"
+      (centerChanged)="onMapCenterChanged()"
+      (zoomChanged)="onMapZoomChanged()">
       <ng-container *ngFor="let routeData of parsedRouteData; trackBy: trackRouteById">
         <map-polyline
           [options]="routeData.polylineOptions"

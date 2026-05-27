@@ -253,6 +253,15 @@ export class AppComponent implements AfterViewInit {
     this.applyRoutePathDetail();
   }
 
+  onMapCenterChanged(): void {
+    const center = this.map?.googleMap?.getCenter()?.toJSON();
+    if (!center) {
+      return;
+    }
+
+    this.mapCenter = center;
+  }
+
   parsedPercent(): number {
     return this.fileCount ? Math.round((this.fileIndex / this.fileCount) * 100) : 0;
   }
@@ -343,7 +352,26 @@ export class AppComponent implements AfterViewInit {
   }
 
   updateMapType(): void {
-    this.mapOptions = { ...this.mapOptions, mapTypeId: this.mapTypeId };
+    const googleMap = this.map?.googleMap;
+    if (!googleMap) {
+      this.mapOptions = { ...this.mapOptions, mapTypeId: this.mapTypeId };
+      return;
+    }
+
+    const center = googleMap.getCenter()?.toJSON();
+    const zoom = googleMap.getZoom();
+
+    googleMap.setMapTypeId(this.mapTypeId);
+
+    if (center) {
+      this.mapCenter = center;
+      googleMap.setCenter(center);
+    }
+
+    if (this.isFiniteNumber(zoom)) {
+      this.mapZoom = zoom;
+      googleMap.setZoom(zoom);
+    }
   }
 
   updateRouteStyles(): void {
