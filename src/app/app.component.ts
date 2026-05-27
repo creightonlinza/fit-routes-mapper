@@ -86,6 +86,14 @@ export class AppComponent implements AfterViewInit {
   }
 
   async loadFiles(): Promise<void> {
+    this.errorMessage = '';
+
+    const selectedActivities = this.selectedActivities();
+    if (selectedActivities.length === 0) {
+      this.errorMessage = 'Select at least one activity type to load';
+      return;
+    }
+
     const fitFiles = this.inputFiles.filter(file => file.name.endsWith('.fit'));
     if (fitFiles.length === 0) {
       this.errorMessage = 'No .fit files found';
@@ -109,7 +117,7 @@ export class AppComponent implements AfterViewInit {
 
       const parsedRouteData = await this.fitParserService.parseFitFile(
         file,
-        this.selectedActivities(),
+        selectedActivities,
         initialRouteData
       );
 

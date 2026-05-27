@@ -1,5 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { AppComponent } from './app.component';
+import { FitParserService } from './service/fit-parser.service';
 
 describe('AppComponent', () => {
   beforeEach(async () => {
@@ -14,16 +15,18 @@ describe('AppComponent', () => {
     expect(app).toBeTruthy();
   });
 
-  it(`should have the 'fit-routes-mapper' title`, () => {
+  it('should skip parsing when no activities are selected', async () => {
     const fixture = TestBed.createComponent(AppComponent);
     const app = fixture.componentInstance;
-    expect(app.title).toEqual('fit-routes-mapper');
-  });
+    const fitParserService = TestBed.inject(FitParserService);
+    const parseFitFileSpy = spyOn(fitParserService, 'parseFitFile');
 
-  it('should render title', () => {
-    const fixture = TestBed.createComponent(AppComponent);
-    fixture.detectChanges();
-    const compiled = fixture.nativeElement as HTMLElement;
-    expect(compiled.querySelector('h1')?.textContent).toContain('Hello, fit-routes-mapper');
+    app.inputFiles = [new File([], 'activity.fit')];
+    app.activities = Object.fromEntries(app.sports.map(sport => [sport, false]));
+
+    await app.loadFiles();
+
+    expect(app.errorMessage).toBe('Select at least one activity type to load');
+    expect(parseFitFileSpy).not.toHaveBeenCalled();
   });
 });
