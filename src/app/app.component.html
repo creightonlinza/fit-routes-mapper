@@ -2,7 +2,10 @@
 <div
   class="d-flex align-items-center justify-content-between px-3 shadow bg-white"
   style="position: fixed; top: 0; left: 0; right: 0; height: 50px; z-index: 1030">
-  <span class="h5 mb-0">.fit Routes Mapper</span>
+  <div class="d-flex align-items-center gap-3">
+    <span class="h5 mb-0">.fit Routes Mapper</span>
+    <span *ngIf="hasLoadedRoutes()" class="small text-muted">Total: {{ totalDistanceLabel() }}</span>
+  </div>
   <button type="button" class="btn btn-secondary" (click)="reset()">Reset Map</button>
 </div>
 
