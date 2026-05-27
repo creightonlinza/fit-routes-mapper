@@ -447,44 +447,4 @@ describe('AppComponent', () => {
 
     expect(route.polylineOptions.path).toEqual(route.pathSet?.detail);
   });
-
-  it('should keep the current map center and zoom when switching map type', () => {
-    const fixture = TestBed.createComponent(AppComponent);
-    const app = fixture.componentInstance;
-    const setMapTypeId = jasmine.createSpy('setMapTypeId');
-    const setCenter = jasmine.createSpy('setCenter');
-    const setZoom = jasmine.createSpy('setZoom');
-    app.map = {
-      googleMap: {
-        getCenter: () => new google.maps.LatLng(44, -73),
-        getZoom: () => 12,
-        setMapTypeId,
-        setCenter,
-        setZoom,
-      },
-    } as unknown as AppComponent['map'];
-    app.mapTypeId = 'satellite';
-
-    app.updateMapType();
-
-    expect(setMapTypeId).toHaveBeenCalledWith('satellite');
-    expect(app.mapCenter).toEqual({ lat: 44, lng: -73 });
-    expect(app.mapZoom).toBe(12);
-    expect(setCenter).toHaveBeenCalledWith({ lat: 44, lng: -73 });
-    expect(setZoom).toHaveBeenCalledWith(12);
-  });
-
-  it('should track the current map center after panning', () => {
-    const fixture = TestBed.createComponent(AppComponent);
-    const app = fixture.componentInstance;
-    app.map = {
-      googleMap: {
-        getCenter: () => new google.maps.LatLng(41, -72),
-      },
-    } as unknown as AppComponent['map'];
-
-    app.onMapCenterChanged();
-
-    expect(app.mapCenter).toEqual({ lat: 41, lng: -72 });
-  });
 });

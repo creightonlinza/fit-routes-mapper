@@ -20,7 +20,6 @@ import { RouteExportService } from './service/route-export.service';
 import { EnvironmentConfig, environment } from '../environments/environment';
 
 type ColorMode = 'default' | 'random' | 'sport' | 'date';
-type MapTypeId = 'roadmap' | 'terrain' | 'satellite' | 'hybrid';
 
 interface RouteDetailItem {
   label: string;
@@ -34,11 +33,6 @@ interface ParsingSummary {
   decodeError: number;
   readError: number;
   nonFit: number;
-}
-
-interface MapTypeOption {
-  label: string;
-  value: MapTypeId;
 }
 
 interface ClosableModal {
@@ -80,8 +74,6 @@ export class AppComponent implements AfterViewInit {
 
   mapCenter = environment.defaultMapCenter;
   mapZoom = environment.defaultMapZoom;
-  mapTypeId: MapTypeId = 'roadmap';
-  mapOptions: google.maps.MapOptions = { mapTypeId: this.mapTypeId };
   currentPathDetail: RoutePathDetail = this.pathDetailForZoom(this.mapZoom);
   sports = Object.values(Sport);
   inputFiles: File[] = [];
@@ -102,13 +94,6 @@ export class AppComponent implements AfterViewInit {
   selectedRouteId?: string;
   parsingSummary: ParsingSummary = this.emptyParsingSummary();
   hasParsingSummary = false;
-
-  mapTypeOptions: MapTypeOption[] = [
-    { label: 'Road', value: 'roadmap' },
-    { label: 'Terrain', value: 'terrain' },
-    { label: 'Satellite', value: 'satellite' },
-    { label: 'Hybrid', value: 'hybrid' },
-  ];
 
   // default input options
   activities: Record<string, boolean> = {
@@ -253,15 +238,6 @@ export class AppComponent implements AfterViewInit {
     this.applyRoutePathDetail();
   }
 
-  onMapCenterChanged(): void {
-    const center = this.map?.googleMap?.getCenter()?.toJSON();
-    if (!center) {
-      return;
-    }
-
-    this.mapCenter = center;
-  }
-
   parsedPercent(): number {
     return this.fileCount ? Math.round((this.fileIndex / this.fileCount) * 100) : 0;
   }
@@ -349,29 +325,6 @@ export class AppComponent implements AfterViewInit {
     this.mapZoom = this.appConfig.defaultMapZoom;
     this.clearNativeFileInput();
     this.openInputModal();
-  }
-
-  updateMapType(): void {
-    const googleMap = this.map?.googleMap;
-    if (!googleMap) {
-      this.mapOptions = { ...this.mapOptions, mapTypeId: this.mapTypeId };
-      return;
-    }
-
-    const center = googleMap.getCenter()?.toJSON();
-    const zoom = googleMap.getZoom();
-
-    googleMap.setMapTypeId(this.mapTypeId);
-
-    if (center) {
-      this.mapCenter = center;
-      googleMap.setCenter(center);
-    }
-
-    if (this.isFiniteNumber(zoom)) {
-      this.mapZoom = zoom;
-      googleMap.setZoom(zoom);
-    }
   }
 
   updateRouteStyles(): void {

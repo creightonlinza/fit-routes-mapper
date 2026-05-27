@@ -32,14 +32,7 @@
 
 <main class="app-shell" [class.drawer-open]="drawerOpen">
   <section *ngIf="mapsApiLoaded" class="map-shell">
-    <google-map
-      height="100%"
-      width="100%"
-      [zoom]="mapZoom"
-      [center]="mapCenter"
-      [options]="mapOptions"
-      (centerChanged)="onMapCenterChanged()"
-      (zoomChanged)="onMapZoomChanged()">
+    <google-map height="100%" width="100%" [zoom]="mapZoom" [center]="mapCenter" (zoomChanged)="onMapZoomChanged()">
       <ng-container *ngFor="let routeData of parsedRouteData; trackBy: trackRouteById">
         <map-polyline
           [options]="routeData.polylineOptions"
@@ -58,11 +51,6 @@
       </div>
 
       <div class="control-grid">
-        <label class="form-label" for="mapType">Map</label>
-        <select id="mapType" class="form-select form-select-sm" [(ngModel)]="mapTypeId" (ngModelChange)="updateMapType()">
-          <option *ngFor="let option of mapTypeOptions" [ngValue]="option.value">{{ option.label }}</option>
-        </select>
-
         <label class="form-label" for="routeWidth">Width</label>
         <input
           id="routeWidth"
