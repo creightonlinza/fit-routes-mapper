@@ -20,7 +20,7 @@ export class FitParserService {
 
       const onMesg = (messageNumber: string | number, message: RecordMessage) => {
         if (Profile.types.mesgNum[messageNumber] === 'session') {
-          includeActivity = Object.values(activities).includes(message.sport);
+          includeActivity = activities.includes(message.sport);
           // TODO: convert values
           routeData.metadata = {
             sport: message.sport,
@@ -40,9 +40,13 @@ export class FitParserService {
 
       decoder.read({ mesgListener: onMesg });
 
+      if (!includeActivity) {
+        return;
+      }
+
       routeData.polylineOptions.path = [] as google.maps.LatLngLiteral[];
       coords.forEach((coord: [number, number]) => {
-        if (includeActivity && this.isValidCoord(coord)) {
+        if (this.isValidCoord(coord)) {
           routeData.polylineOptions?.path?.push(new google.maps.LatLng(coord[0], coord[1]));
         }
       });
