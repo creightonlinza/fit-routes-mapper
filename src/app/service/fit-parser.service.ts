@@ -3,6 +3,7 @@ import { FitParseResult, ParsedRouteData, RoutePathSet } from '../model/parsed-r
 import { RecordMessage } from '../model/record-message.model';
 import { DEFAULT_SIMPLIFICATION_TOLERANCE_METERS } from '../model/route-import.model';
 import { Sport } from '../model/sport.model';
+import { buildRouteMetadata, finalizeRouteMetadata, recordSpeed } from './fit-route-metadata';
 import { simplifyPath } from './route-simplifier';
 
 const FIT_SEMICIRCLES_SCALE = 180 / 2 ** 31;
@@ -32,27 +33,24 @@ export class FitParserService {
       const streamFromFileSync = Stream.fromArrayBuffer(buffer);
       const decoder = new Decoder(streamFromFileSync);
       const coords: google.maps.LatLngLiteral[] = [];
+      const recordSpeeds: number[] = [];
       let includeActivity: boolean | undefined = undefined;
 
       const onMesg = (messageNumber: string | number, message: RecordMessage) => {
         if (Profile.types.mesgNum[messageNumber] === 'session') {
-          includeActivity = activities.includes(message.sport);
-          // TODO: convert values
-          routeData.metadata = {
-            sport: message.sport,
-            startTime: message.startTime,
-            totalTimerTime: message.totalTimerTime,
-            totalDistance: message.totalDistance,
-            totalCalories: message.totalCalories,
-            maxSpeed: message.maxSpeed,
-            avgSpeed: message.avgSpeed,
-          };
+          includeActivity = message.sport ? activities.includes(message.sport) : false;
+          routeData.metadata = buildRouteMetadata(message);
         }
 
         if (Profile.types.mesgNum[messageNumber] === 'record') {
           const coord = this.toLatLng(message.positionLat, message.positionLong);
           if (coord) {
             coords.push(coord);
+          }
+
+          const speed = recordSpeed(message);
+          if (speed !== undefined) {
+            recordSpeeds.push(speed);
           }
         }
       };
@@ -72,6 +70,7 @@ export class FitParserService {
 
       const pathSet = this.buildPathSet(coords, simplificationToleranceMeters);
       const simplifiedCoords = pathSet.standard;
+      routeData.metadata = finalizeRouteMetadata(routeData.metadata, recordSpeeds);
       routeData.sourcePointCount = coords.length;
       routeData.mappedPointCount = simplifiedCoords.length;
       routeData.pathSet = pathSet;

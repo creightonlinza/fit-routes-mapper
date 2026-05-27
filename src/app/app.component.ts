@@ -41,6 +41,10 @@ interface MapTypeOption {
   value: MapTypeId;
 }
 
+interface ClosableModal {
+  close: (reason?: unknown) => void;
+}
+
 const SPORT_COLORS: Record<Sport, string> = {
   [Sport.Cycling]: '#0d6efd',
   [Sport.Hiking]: '#198754',
@@ -82,14 +86,6 @@ export class AppComponent implements AfterViewInit {
   sports = Object.values(Sport);
   inputFiles: File[] = [];
   parsedRouteData: ParsedRouteData[] = [];
-  visibleRouteData: ParsedRouteData[] = [];
-  renderedRouteData: ParsedRouteData[] = [];
-  pagedRouteData: ParsedRouteData[] = [];
-  visibleRouteCount = 0;
-  renderedRouteCount = 0;
-  routeListPage = 0;
-  routeListPageSize = 200;
-  routeListPageCount = 0;
   totalDistanceText = 'N/A';
   routeMetadata: Partial<RouteMetadata> = {};
   routeDetailFileName = '';
@@ -229,7 +225,7 @@ export class AppComponent implements AfterViewInit {
   }
 
   setMapViewport(): void {
-    const bounds = this.buildRouteBounds(this.renderedRouteData);
+    const bounds = this.buildRouteBounds(this.parsedRouteData);
     if (!bounds) {
       return;
     }
@@ -239,17 +235,6 @@ export class AppComponent implements AfterViewInit {
     if (this.map?.googleMap) {
       this.map.googleMap.fitBounds(bounds);
     }
-  }
-
-  fitRoute(route: ParsedRouteData): void {
-    const bounds = this.buildRouteBounds([route]);
-    if (!bounds) {
-      return;
-    }
-
-    this.selectRoute(route, false);
-    this.mapCenter = bounds.getCenter().toJSON();
-    this.map?.googleMap?.fitBounds(bounds);
   }
 
   onMapZoomChanged(): void {
@@ -287,48 +272,33 @@ export class AppComponent implements AfterViewInit {
   }
 
   routeDetailItems(routeMetadata: Partial<RouteMetadata> = this.routeMetadata): RouteDetailItem[] {
-    return [
+    const items = [
       { label: 'File', value: this.routeDetailFileName || 'N/A' },
       { label: 'Sport', value: this.formatSport(routeMetadata.sport) },
       { label: 'Start Time', value: this.formatDate(routeMetadata.startTime) },
-      { label: 'Elapsed Time', value: this.formatDuration(routeMetadata.totalTimerTime) },
-      { label: 'Distance', value: this.formatDistance(routeMetadata.totalDistance) },
-      { label: 'Calories', value: this.formatCalories(routeMetadata.totalCalories) },
-      { label: 'Max Speed', value: this.formatSpeed(routeMetadata.maxSpeed) },
-      { label: 'Average Speed', value: this.formatSpeed(routeMetadata.avgSpeed) },
+      { label: 'Elapsed Time', value: this.formatDuration(routeMetadata.totalElapsedTime ?? routeMetadata.totalTimerTime) },
     ];
+
+    if (this.hasDistinctTimerTime(routeMetadata)) {
+      items.push({ label: 'Active Time', value: this.formatDuration(routeMetadata.totalTimerTime) });
+    }
+
+    items.push(
+      { label: 'Distance', value: this.formatDistance(routeMetadata.totalDistance) },
+      { label: 'Elevation Gain', value: this.formatElevation(routeMetadata.totalAscent) },
+      { label: 'Elevation Loss', value: this.formatElevation(routeMetadata.totalDescent) },
+      { label: 'Calories', value: this.formatCalories(routeMetadata.totalCalories) },
+      { label: 'Average Heart Rate', value: this.formatHeartRate(routeMetadata.avgHeartRate) },
+      { label: 'Max Heart Rate', value: this.formatHeartRate(routeMetadata.maxHeartRate) },
+      { label: 'Max Speed', value: this.formatSpeed(routeMetadata.maxSpeed) },
+      { label: 'Average Speed', value: this.formatSpeed(routeMetadata.avgSpeed) }
+    );
+
+    return items;
   }
 
   hasLoadedRoutes(): boolean {
     return this.parsedRouteData.length > 0;
-  }
-
-  visibleRoutes(): ParsedRouteData[] {
-    return this.visibleRouteData;
-  }
-
-  hasVisibleRoutes(): boolean {
-    return this.visibleRouteCount > 0;
-  }
-
-  totalDistanceLabel(): string {
-    return this.totalDistanceText;
-  }
-
-  routeDistanceLabel(route: ParsedRouteData): string {
-    return this.formatDistance(route.metadata?.totalDistance);
-  }
-
-  routeDurationLabel(route: ParsedRouteData): string {
-    return this.formatDuration(route.metadata?.totalTimerTime);
-  }
-
-  routeStartLabel(route: ParsedRouteData): string {
-    return this.formatDate(route.metadata?.startTime);
-  }
-
-  routePointCount(route: ParsedRouteData): number {
-    return route.mappedPointCount;
   }
 
   parsingSummaryItems(): RouteDetailItem[] {
@@ -353,37 +323,8 @@ export class AppComponent implements AfterViewInit {
     this.drawerOpen = !this.drawerOpen;
   }
 
-  toggleRouteVisibility(route: ParsedRouteData): void {
-    route.visible = !route.visible;
-    if (!route.visible && route.id === this.selectedRouteId) {
-      this.selectedRouteId = undefined;
-      route.selected = false;
-      this.routeMetadata = {};
-      this.routeDetailFileName = '';
-    }
-    this.updatePolylineOptions(route);
-    this.rebuildRouteState();
-  }
-
-  deleteRoute(route: ParsedRouteData): void {
-    this.parsedRouteData = this.parsedRouteData.filter(item => item.id !== route.id);
-    if (route.id === this.selectedRouteId) {
-      this.selectedRouteId = undefined;
-      this.routeMetadata = {};
-      this.routeDetailFileName = '';
-    }
-    this.rebuildRouteState();
-  }
-
   clearRoutes(): void {
     this.parsedRouteData = [];
-    this.visibleRouteData = [];
-    this.renderedRouteData = [];
-    this.pagedRouteData = [];
-    this.visibleRouteCount = 0;
-    this.renderedRouteCount = 0;
-    this.routeListPage = 0;
-    this.routeListPageCount = 0;
     this.totalDistanceText = 'N/A';
     this.inputFiles = [];
     this.routeMetadata = {};
@@ -415,7 +356,7 @@ export class AppComponent implements AfterViewInit {
   }
 
   exportGeoJson(): void {
-    if (!this.hasVisibleRoutes()) {
+    if (!this.hasLoadedRoutes()) {
       return;
     }
 
@@ -423,7 +364,7 @@ export class AppComponent implements AfterViewInit {
   }
 
   exportCsv(): void {
-    if (!this.hasVisibleRoutes()) {
+    if (!this.hasLoadedRoutes()) {
       return;
     }
 
@@ -450,22 +391,14 @@ export class AppComponent implements AfterViewInit {
     }
   }
 
-  previousRouteListPage(): void {
-    if (this.routeListPage === 0) {
+  deleteSelectedRoute(modal: ClosableModal): void {
+    const selectedRoute = this.parsedRouteData.find(route => route.id === this.selectedRouteId);
+    if (!selectedRoute) {
       return;
     }
 
-    this.routeListPage -= 1;
-    this.rebuildRoutePage();
-  }
-
-  nextRouteListPage(): void {
-    if (this.routeListPage >= this.routeListPageCount - 1) {
-      return;
-    }
-
-    this.routeListPage += 1;
-    this.rebuildRoutePage();
+    this.deleteRoute(selectedRoute);
+    modal.close('Delete route');
   }
 
   trackRouteById(index: number, route: ParsedRouteData): string {
@@ -592,25 +525,7 @@ export class AppComponent implements AfterViewInit {
   }
 
   private rebuildRouteState(): void {
-    this.visibleRouteData = this.parsedRouteData.filter(route => route.visible);
-    this.visibleRouteCount = this.visibleRouteData.length;
-    this.renderedRouteData = this.visibleRouteData;
-    this.renderedRouteCount = this.renderedRouteData.length;
-    this.totalDistanceText = this.formatDistance(this.totalDistanceMeters(this.visibleRouteData));
-    this.routeListPageCount = Math.ceil(this.parsedRouteData.length / this.routeListPageSize);
-
-    if (this.routeListPageCount === 0) {
-      this.routeListPage = 0;
-    } else if (this.routeListPage >= this.routeListPageCount) {
-      this.routeListPage = this.routeListPageCount - 1;
-    }
-
-    this.rebuildRoutePage();
-  }
-
-  private rebuildRoutePage(): void {
-    const startIndex = this.routeListPage * this.routeListPageSize;
-    this.pagedRouteData = this.parsedRouteData.slice(startIndex, startIndex + this.routeListPageSize);
+    this.totalDistanceText = this.formatDistance(this.totalDistanceMeters(this.parsedRouteData));
   }
 
   private applyRoutePathDetail(): void {
@@ -640,6 +555,15 @@ export class AppComponent implements AfterViewInit {
     }
 
     return 'detail';
+  }
+
+  private deleteRoute(route: ParsedRouteData): void {
+    this.parsedRouteData = this.parsedRouteData.filter(item => item.id !== route.id);
+    this.selectedRouteId = undefined;
+    route.selected = false;
+    this.routeMetadata = {};
+    this.routeDetailFileName = '';
+    this.rebuildRouteState();
   }
 
   private updatePolylineOptions(route: ParsedRouteData): void {
@@ -735,6 +659,14 @@ export class AppComponent implements AfterViewInit {
     return `${minutes}m ${remainingSeconds.toString().padStart(2, '0')}s`;
   }
 
+  private hasDistinctTimerTime(routeMetadata: Partial<RouteMetadata>): boolean {
+    if (!this.isFiniteNumber(routeMetadata.totalElapsedTime) || !this.isFiniteNumber(routeMetadata.totalTimerTime)) {
+      return false;
+    }
+
+    return Math.round(routeMetadata.totalElapsedTime) !== Math.round(routeMetadata.totalTimerTime);
+  }
+
   private formatDistance(meters: number | undefined): string {
     if (!this.isFiniteNumber(meters)) {
       return 'N/A';
@@ -745,6 +677,18 @@ export class AppComponent implements AfterViewInit {
     }
 
     return `${(meters / 1609.344).toFixed(2)} mi`;
+  }
+
+  private formatElevation(meters: number | undefined): string {
+    if (!this.isFiniteNumber(meters)) {
+      return 'N/A';
+    }
+
+    if (this.unitSystem === 'metric') {
+      return `${Math.round(meters)} m`;
+    }
+
+    return `${Math.round(meters * 3.280839895)} ft`;
   }
 
   private formatSpeed(metersPerSecond: number | undefined): string {
@@ -765,6 +709,14 @@ export class AppComponent implements AfterViewInit {
     }
 
     return `${Math.round(calories)} kcal`;
+  }
+
+  private formatHeartRate(beatsPerMinute: number | undefined): string {
+    if (!this.isFiniteNumber(beatsPerMinute)) {
+      return 'N/A';
+    }
+
+    return `${Math.round(beatsPerMinute)} bpm`;
   }
 
   private totalDistanceMeters(routes: ParsedRouteData[]): number | undefined {

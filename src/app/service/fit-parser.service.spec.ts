@@ -124,6 +124,57 @@ describe('FitParserService', () => {
     expect(result.routeData?.mappedPointCount).toBe(1);
   });
 
+  it('should normalize route timing and speed metadata from session and record messages', async () => {
+    mockFitSdk(service, [
+      [
+        'session',
+        {
+          sport: Sport.Running,
+          totalElapsedTime: 650,
+          totalTimerTime: 500,
+          totalDistance: 1000,
+          totalAscent: 42,
+          totalDescent: 21,
+          avgHeartRate: 145,
+          maxHeartRate: 172,
+          avgSpeed: 1,
+          enhancedAvgSpeed: 1.5,
+          maxSpeed: 3,
+          enhancedMaxSpeed: 3.5,
+        },
+      ],
+      [
+        'record',
+        {
+          positionLat: 45 * FIT_DEGREES_TO_SEMICIRCLES,
+          positionLong: -75 * FIT_DEGREES_TO_SEMICIRCLES,
+          speed: 4,
+          enhancedSpeed: 4.5,
+        },
+      ],
+      [
+        'record',
+        {
+          positionLat: 45.1 * FIT_DEGREES_TO_SEMICIRCLES,
+          positionLong: -75.1 * FIT_DEGREES_TO_SEMICIRCLES,
+          speed: 5,
+        },
+      ],
+    ]);
+
+    const result = await service.parseFitFile(new File([new ArrayBuffer(1)], 'run.fit'), [Sport.Running], buildRouteData());
+
+    expect(result.status).toBe('loaded');
+    expect(result.routeData?.metadata?.totalElapsedTime).toBe(650);
+    expect(result.routeData?.metadata?.totalTimerTime).toBe(500);
+    expect(result.routeData?.metadata?.totalAscent).toBe(42);
+    expect(result.routeData?.metadata?.totalDescent).toBe(21);
+    expect(result.routeData?.metadata?.avgHeartRate).toBe(145);
+    expect(result.routeData?.metadata?.maxHeartRate).toBe(172);
+    expect(result.routeData?.metadata?.avgSpeed).toBe(2);
+    expect(result.routeData?.metadata?.maxSpeed).toBe(5);
+  });
+
   it('should return skipped-sport when the session sport is not selected', async () => {
     mockFitSdk(service, [['session', { sport: Sport.Cycling }]]);
 

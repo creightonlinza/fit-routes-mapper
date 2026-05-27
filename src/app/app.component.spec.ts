@@ -245,7 +245,7 @@ describe('AppComponent', () => {
     expect(fitBounds).toHaveBeenCalled();
   });
 
-  it('should ignore hidden routes when fitting the map and totaling distances', () => {
+  it('should fit and total all loaded routes', () => {
     const fixture = TestBed.createComponent(AppComponent);
     const app = fixture.componentInstance;
     const fitBounds = jasmine.createSpy('fitBounds');
@@ -257,8 +257,7 @@ describe('AppComponent', () => {
         metadata: { totalDistance: 1000 } as RouteMetadata,
       }),
       buildRoute({
-        id: 'hidden',
-        visible: false,
+        id: 'second',
         metadata: { totalDistance: 2000 } as RouteMetadata,
         polylineOptions: { path: [{ lat: 80, lng: 80 }] },
       }),
@@ -267,8 +266,8 @@ describe('AppComponent', () => {
 
     app.setMapViewport();
 
-    expect(app.mapCenter).toEqual({ lat: 15, lng: 30 });
-    expect(app.totalDistanceText).toBe('0.62 mi');
+    expect(app.mapCenter).toEqual({ lat: 36.66666666666667, lng: 46.66666666666667 });
+    expect(app.totalDistanceText).toBe('1.86 mi');
   });
 
   it('should fit the map to route points from MVCArray paths', () => {
@@ -310,18 +309,20 @@ describe('AppComponent', () => {
     expect(route.polylineOptions.strokeWeight).toBe(8);
   });
 
-  it('should hide and delete routes from the visible set', () => {
+  it('should delete the selected route from the details modal', () => {
     const fixture = TestBed.createComponent(AppComponent);
     const app = fixture.componentInstance;
     const route = buildRoute();
+    const modal = { close: jasmine.createSpy('close') };
     app.parsedRouteData = [route];
     app['rebuildRouteState']();
 
-    app.toggleRouteVisibility(route);
-    expect(app.hasVisibleRoutes()).toBeFalse();
+    app.selectRoute(route, false);
+    app.deleteSelectedRoute(modal);
 
-    app.deleteRoute(route);
     expect(app.hasLoadedRoutes()).toBeFalse();
+    expect(app.selectedRouteId).toBeUndefined();
+    expect(modal.close).toHaveBeenCalledWith('Delete route');
   });
 
   it('should clear route state without reloading the page', () => {
@@ -347,9 +348,14 @@ describe('AppComponent', () => {
       app.routeDetailItems({
         sport: Sport.Running,
         startTime: new Date('2025-01-01T12:00:00Z'),
+        totalElapsedTime: 4000,
         totalTimerTime: 3661,
         totalDistance: 1609.344,
+        totalAscent: 123,
+        totalDescent: 87,
         totalCalories: 425.4,
+        avgHeartRate: 143.4,
+        maxHeartRate: 171.8,
         maxSpeed: 4,
         avgSpeed: 2,
       }).map(item => [item.label, item.value])
@@ -357,9 +363,14 @@ describe('AppComponent', () => {
 
     expect(details['File']).toBe('run.fit');
     expect(details['Sport']).toBe('Running');
-    expect(details['Elapsed Time']).toBe('1h 01m 01s');
+    expect(details['Elapsed Time']).toBe('1h 06m 40s');
+    expect(details['Active Time']).toBe('1h 01m 01s');
     expect(details['Distance']).toBe('1.00 mi');
+    expect(details['Elevation Gain']).toBe('404 ft');
+    expect(details['Elevation Loss']).toBe('285 ft');
     expect(details['Calories']).toBe('425 kcal');
+    expect(details['Average Heart Rate']).toBe('143 bpm');
+    expect(details['Max Heart Rate']).toBe('172 bpm');
     expect(details['Max Speed']).toBe('8.9 mph');
     expect(details['Average Speed']).toBe('4.5 mph');
   });
@@ -372,31 +383,35 @@ describe('AppComponent', () => {
     const details = Object.fromEntries(
       app.routeDetailItems({
         totalDistance: 1609.344,
+        totalAscent: 123,
+        totalDescent: 87,
         maxSpeed: 4,
         avgSpeed: 2,
       }).map(item => [item.label, item.value])
     );
 
     expect(details['Distance']).toBe('1.61 km');
+    expect(details['Elevation Gain']).toBe('123 m');
+    expect(details['Elevation Loss']).toBe('87 m');
     expect(details['Max Speed']).toBe('14.4 km/h');
     expect(details['Average Speed']).toBe('7.2 km/h');
     expect(details['Sport']).toBe('N/A');
   });
 
-  it('should expose export eligibility based on visible routes', () => {
+  it('should expose export eligibility based on loaded routes', () => {
     const fixture = TestBed.createComponent(AppComponent);
     const app = fixture.componentInstance;
 
-    app.parsedRouteData = [buildRoute({ visible: false })];
+    app.parsedRouteData = [];
     app['rebuildRouteState']();
-    expect(app.hasVisibleRoutes()).toBeFalse();
+    expect(app.hasLoadedRoutes()).toBeFalse();
 
-    app.parsedRouteData[0].visible = true;
+    app.parsedRouteData = [buildRoute()];
     app['rebuildRouteState']();
-    expect(app.hasVisibleRoutes()).toBeTrue();
+    expect(app.hasLoadedRoutes()).toBeTrue();
   });
 
-  it('should render every visible route on the map', () => {
+  it('should render every loaded route on the map', () => {
     const fixture = TestBed.createComponent(AppComponent);
     const app = fixture.componentInstance;
 
@@ -404,21 +419,7 @@ describe('AppComponent', () => {
     app['rebuildRouteState']();
 
     expect(app.parsedRouteData.length).toBe(501);
-    expect(app.visibleRouteCount).toBe(501);
-    expect(app.renderedRouteCount).toBe(501);
-    expect(app.renderedRouteData.length).toBe(501);
-  });
-
-  it('should keep drawer rows paged while rendering all visible map routes', () => {
-    const fixture = TestBed.createComponent(AppComponent);
-    const app = fixture.componentInstance;
-
-    app.parsedRouteData = Array.from({ length: 501 }, (_, index) => buildRoute({ id: `route-${index + 1}` }));
-    app['rebuildRouteState']();
-
-    expect(app.renderedRouteData.length).toBe(501);
-    expect(app.pagedRouteData.length).toBe(200);
-    expect(app.routeListPageCount).toBe(3);
+    expect(app.totalDistanceText).toBe('N/A');
   });
 
   it('should switch route paths based on map zoom level', () => {

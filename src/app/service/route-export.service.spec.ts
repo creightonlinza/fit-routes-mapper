@@ -37,9 +37,14 @@ function buildRoute(overrides: Partial<ParsedRouteData> = {}): ParsedRouteData {
     metadata: {
       sport: Sport.Running,
       startTime: new Date('2025-01-01T12:00:00Z'),
+      totalElapsedTime: 3700,
       totalTimerTime: 3600,
       totalDistance: 10000,
+      totalAscent: 120,
+      totalDescent: 90,
       totalCalories: 500,
+      avgHeartRate: 142,
+      maxHeartRate: 175,
       maxSpeed: 5,
       avgSpeed: 3,
     },
@@ -68,11 +73,11 @@ describe('RouteExportService', () => {
     service = TestBed.inject(RouteExportService);
   });
 
-  it('should export visible routes as GeoJSON features', () => {
-    const geoJson = JSON.parse(service.buildGeoJson([buildRoute(), buildRoute({ id: 'hidden', visible: false })]));
+  it('should export loaded routes as GeoJSON features', () => {
+    const geoJson = JSON.parse(service.buildGeoJson([buildRoute(), buildRoute({ id: 'second' })]));
 
     expect(geoJson.type).toBe('FeatureCollection');
-    expect(geoJson.features.length).toBe(1);
+    expect(geoJson.features.length).toBe(2);
     expect(geoJson.features[0].properties.fileName).toBe('activity.fit');
     expect(geoJson.features[0].properties.sourcePointCount).toBe(2);
     expect(geoJson.features[0].properties.mappedPointCount).toBe(2);
@@ -83,12 +88,12 @@ describe('RouteExportService', () => {
     ]);
   });
 
-  it('should export visible routes as CSV rows', () => {
-    const csv = service.buildCsv([buildRoute(), buildRoute({ id: 'hidden', visible: false })]);
+  it('should export loaded routes as CSV rows', () => {
+    const csv = service.buildCsv([buildRoute(), buildRoute({ id: 'second' })]);
 
     expect(csv).toContain('fileName,sport,startTime,elapsedTimeSeconds');
-    expect(csv).toContain('activity.fit,running,2025-01-01T12:00:00.000Z,3600,10000,500,5,3,2,2,2');
-    expect(csv.split('\n').length).toBe(2);
+    expect(csv).toContain('activity.fit,running,2025-01-01T12:00:00.000Z,3700,3600,10000,120,90,500,142,175,5,3,2,2,2');
+    expect(csv.split('\n').length).toBe(3);
   });
 
   it('should escape CSV values and use metadata fallbacks', () => {
@@ -100,7 +105,7 @@ describe('RouteExportService', () => {
       }),
     ]);
 
-    expect(csv).toContain('"quoted, ""route"".fit",,,,,,,,2,2,0');
+    expect(csv).toContain('"quoted, ""route"".fit",,,,,,,,,,,,,2,2,0');
   });
 
   it('should support MVCArray path exports', () => {
@@ -138,9 +143,9 @@ describe('RouteExportService', () => {
     ]);
   });
 
-  it('should export empty collections when no routes are visible', () => {
-    const geoJson = JSON.parse(service.buildGeoJson([buildRoute({ visible: false })]));
-    const csv = service.buildCsv([buildRoute({ visible: false })]);
+  it('should export empty collections when no routes are loaded', () => {
+    const geoJson = JSON.parse(service.buildGeoJson([]));
+    const csv = service.buildCsv([]);
 
     expect(geoJson.features).toEqual([]);
     expect(csv.split('\n').length).toBe(1);

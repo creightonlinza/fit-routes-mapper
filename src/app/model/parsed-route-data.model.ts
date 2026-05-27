@@ -1,13 +1,18 @@
 import { Sport } from './sport.model';
 
 export interface RouteMetadata {
-  sport: Sport;
-  startTime: Date;
-  totalTimerTime: number;
-  totalDistance: number;
-  totalCalories: number;
-  maxSpeed: number;
-  avgSpeed: number;
+  sport?: Sport;
+  startTime?: Date;
+  totalElapsedTime?: number;
+  totalTimerTime?: number;
+  totalDistance?: number;
+  totalAscent?: number;
+  totalDescent?: number;
+  totalCalories?: number;
+  avgHeartRate?: number;
+  maxHeartRate?: number;
+  maxSpeed?: number;
+  avgSpeed?: number;
 }
 
 export type RoutePathDetail = 'overview' | 'standard' | 'detail';

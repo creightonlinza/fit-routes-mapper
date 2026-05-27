@@ -9,6 +9,7 @@ import {
   RouteImportWorkerMessage,
 } from '../model/route-import.model';
 import { Sport } from '../model/sport.model';
+import { buildRouteMetadata, finalizeRouteMetadata, recordSpeed } from '../service/fit-route-metadata';
 import { simplifyPath } from '../service/route-simplifier';
 
 const FIT_SEMICIRCLES_SCALE = 180 / 2 ** 31;
@@ -71,27 +72,25 @@ async function parseFitFile(
     const streamFromFileSync = Stream.fromArrayBuffer(buffer);
     const decoder = new Decoder(streamFromFileSync);
     const coords: google.maps.LatLngLiteral[] = [];
+    const recordSpeeds: number[] = [];
     let metadata: ImportedRoutePayload['metadata'];
     let includeActivity: boolean | undefined;
 
     const onMesg = (messageNumber: string | number, message: RecordMessage) => {
       if (Profile.types.mesgNum[messageNumber] === 'session') {
-        includeActivity = activities.includes(message.sport);
-        metadata = {
-          sport: message.sport,
-          startTime: message.startTime,
-          totalTimerTime: message.totalTimerTime,
-          totalDistance: message.totalDistance,
-          totalCalories: message.totalCalories,
-          maxSpeed: message.maxSpeed,
-          avgSpeed: message.avgSpeed,
-        };
+        includeActivity = message.sport ? activities.includes(message.sport) : false;
+        metadata = buildRouteMetadata(message);
       }
 
       if (Profile.types.mesgNum[messageNumber] === 'record') {
         const coord = toLatLng(message.positionLat, message.positionLong);
         if (coord) {
           coords.push(coord);
+        }
+
+        const speed = recordSpeed(message);
+        if (speed !== undefined) {
+          recordSpeeds.push(speed);
         }
       }
     };
@@ -119,7 +118,7 @@ async function parseFitFile(
         fileName: file.fileName,
         fileSize: file.fileSize,
         lastModified: file.lastModified,
-        metadata,
+        metadata: finalizeRouteMetadata(metadata, recordSpeeds),
         path: simplifiedCoords,
         pathSet,
         sourcePointCount: coords.length,

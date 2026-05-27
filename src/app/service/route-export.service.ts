@@ -20,7 +20,7 @@ export class RouteExportService {
   buildGeoJson(routes: ParsedRouteData[]): string {
     const featureCollection: GeoJsonFeatureCollection = {
       type: 'FeatureCollection',
-      features: routes.filter(route => route.visible).map(route => this.toGeoJsonFeature(route)),
+      features: routes.map(route => this.toGeoJsonFeature(route)),
     };
 
     return JSON.stringify(featureCollection, null, 2);
@@ -32,8 +32,13 @@ export class RouteExportService {
       'sport',
       'startTime',
       'elapsedTimeSeconds',
+      'activeTimeSeconds',
       'distanceMeters',
+      'elevationGainMeters',
+      'elevationLossMeters',
       'calories',
+      'averageHeartRateBpm',
+      'maxHeartRateBpm',
       'maxSpeedMetersPerSecond',
       'averageSpeedMetersPerSecond',
       'sourcePointCount',
@@ -41,13 +46,18 @@ export class RouteExportService {
       'pointCount',
     ];
 
-    const rows = routes.filter(route => route.visible).map(route => [
+    const rows = routes.map(route => [
       route.fileName,
       route.metadata?.sport ?? '',
       this.toIsoDate(route.metadata?.startTime),
+      route.metadata?.totalElapsedTime ?? route.metadata?.totalTimerTime ?? '',
       route.metadata?.totalTimerTime ?? '',
       route.metadata?.totalDistance ?? '',
+      route.metadata?.totalAscent ?? '',
+      route.metadata?.totalDescent ?? '',
       route.metadata?.totalCalories ?? '',
+      route.metadata?.avgHeartRate ?? '',
+      route.metadata?.maxHeartRate ?? '',
       route.metadata?.maxSpeed ?? '',
       route.metadata?.avgSpeed ?? '',
       route.sourcePointCount,
@@ -68,9 +78,14 @@ export class RouteExportService {
         lastModified: route.lastModified,
         sport: route.metadata?.sport ?? null,
         startTime: this.toIsoDate(route.metadata?.startTime),
-        elapsedTimeSeconds: route.metadata?.totalTimerTime ?? null,
+        elapsedTimeSeconds: route.metadata?.totalElapsedTime ?? route.metadata?.totalTimerTime ?? null,
+        activeTimeSeconds: route.metadata?.totalTimerTime ?? null,
         distanceMeters: route.metadata?.totalDistance ?? null,
+        elevationGainMeters: route.metadata?.totalAscent ?? null,
+        elevationLossMeters: route.metadata?.totalDescent ?? null,
         calories: route.metadata?.totalCalories ?? null,
+        averageHeartRateBpm: route.metadata?.avgHeartRate ?? null,
+        maxHeartRateBpm: route.metadata?.maxHeartRate ?? null,
         maxSpeedMetersPerSecond: route.metadata?.maxSpeed ?? null,
         averageSpeedMetersPerSecond: route.metadata?.avgSpeed ?? null,
         sourcePointCount: route.sourcePointCount,
