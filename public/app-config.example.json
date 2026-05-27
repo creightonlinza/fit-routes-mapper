@@ -4,5 +4,6 @@
   "defaultMapZoom": 8,
   "defaultStrokeColor": "#000000",
   "defaultStrokeOpacity": 0.8,
-  "defaultStrokeWeight": 5
+  "defaultStrokeWeight": 5,
+  "defaultUnitSystem": "imperial"
 }
